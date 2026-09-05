@@ -17,7 +17,7 @@ HF_TOKEN = "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"
 DAILY_LIMIT = 20
 MAX_USER_HISTORY = 5
 
-# ---------- MODELS (7) ----------
+# ---------- MODELS ----------
 MODELS = [
     "deepseek-ai/deepseek-coder-6.7b-instruct",
     "codellama/CodeLlama-7b-Python-hf",
@@ -50,7 +50,7 @@ WAIT_FORMAT, WAIT_CONVERT, WAIT_REVIEW, WAIT_COMPLEXITY, WAIT_TESTS, WAIT_DOCS =
 # ---------- LOGGING ----------
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-# ---------- HTTP HEALTH CHECK SERVER ----------
+# ---------- HEALTH CHECK SERVER ----------
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -66,7 +66,8 @@ threading.Thread(target=run_health_server, daemon=True).start()
 def load_json(f):
     return json.load(open(f)) if os.path.exists(f) else {}
 def save_json(f, d):
-    with open(f, "w") as j: json.dump(d, j, indent=2)
+    with open(f, "w") as j:
+        json.dump(d, j, indent=2)
 
 def load_history(): return load_json(HISTORY_FILE)
 def save_history(d): save_json(HISTORY_FILE, d)
@@ -151,7 +152,8 @@ def submit_challenge(user_id, answer):
     ch = get_current_challenge()
     if not ch: return "No active challenge."
     if ch["answer"] == answer.strip().lower():
-        lb[u]["points"] += 10; lb[u]["solved"] += 1
+        lb[u]["points"] += 10
+        lb[u]["solved"] += 1
         lb[u]["history"].append({"date": datetime.now().strftime("%Y-%m-%d"), "status": "solved"})
         save_leaderboard(lb)
         check_achievements(user_id)
@@ -254,41 +256,52 @@ def get_user_stats():
     return len(h), sum(len(v) for v in h.values())
 
 # ---------- AI HELPERS ----------
-async def call_hf_model(model, prompt):
+async def call_hf_model(model, prompt, retries=3):
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
     url = HF_API_URL.format(model)
     payload = {"inputs": prompt, "parameters": {"max_new_tokens": 500, "temperature": 0.2}}
-    for attempt in range(2):
+    for attempt in range(retries):
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, headers=headers, json=payload, timeout=25) as resp:
+                async with session.post(url, headers=headers, json=payload, timeout=30) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         if isinstance(data, list):
                             return data[0].get("generated_text", "").replace(prompt, "").strip()
                         return data.get("generated_text", "").replace(prompt, "").strip()
                     elif resp.status == 429:
-                        await asyncio.sleep(3)
+                        await asyncio.sleep(2 ** attempt)
                         continue
+                    else:
+                        return ""
         except:
-            pass
+            await asyncio.sleep(1)
     return ""
 
 async def ask_multiple_ai(user_id, prompt):
-    tasks = [call_hf_model(m, prompt) for m in MODELS[:5]]  # Use first 5 for speed
+    # Try first 5 models
+    tasks = [call_hf_model(m, prompt) for m in MODELS[:5]]
     responses = await asyncio.gather(*tasks, return_exceptions=True)
     valid = [r for r in responses if isinstance(r, str) and len(r) > 10]
     if not valid:
-        return "❌ All AI models are busy. Please try later."
+        # Fallback to single model with more retries
+        single = await call_hf_model("deepseek-ai/deepseek-coder-6.7b-instruct", prompt, retries=5)
+        if single:
+            return single
+        else:
+            return "❌ All AI models are busy. Please try again later."
     if len(valid) == 1:
         return valid[0]
     # Synthesize using deepseek
-    combined = "I got multiple responses. Synthesize them:\n" + "\n".join(f"Resp{i+1}: {r}" for i,r in enumerate(valid[:3]))
-    final = await call_hf_model("deepseek-ai/deepseek-coder-6.7b-instruct", f"Combine these into a single best answer:\n{combined}")
-    return final if final else valid[0]
+    combined = "I got multiple responses. Synthesize them into one answer:\n\n" + "\n".join(f"R{i+1}: {r[:300]}" for i,r in enumerate(valid[:3]))
+    final = await call_hf_model("deepseek-ai/deepseek-coder-6.7b-instruct", combined, retries=3)
+    if final and len(final) > 10:
+        return final + "\n\n🤖 (Combined from multiple models)"
+    else:
+        return valid[0] + "\n\n🤖 (Single model response)"
 
 async def ask_single_ai(user_id, prompt):
-    return await call_hf_model("deepseek-ai/deepseek-coder-6.7b-instruct", prompt)
+    return await call_hf_model("deepseek-ai/deepseek-coder-6.7b-instruct", prompt, retries=5)
 
 def run_code(lang, code):
     try:
@@ -299,7 +312,16 @@ def run_code(lang, code):
     except Exception as e:
         return f"❌ {str(e)}"
 
-# ---------- KEYBOARDS (CLEAN DASHBOARD) ----------
+# ---------- ERROR HANDLER ----------
+async def error_handler(update, context):
+    logging.error(f"Update {update} caused error {context.error}")
+    # Optionally send error to owner
+    try:
+        await context.bot.send_message(OWNER_ID, f"⚠️ Error: {context.error}")
+    except:
+        pass
+
+# ---------- KEYBOARDS ----------
 MAIN_MENU = [
     [InlineKeyboardButton("🤖 AI Services", callback_data="menu_ai")],
     [InlineKeyboardButton("🛠️ Code Tools", callback_data="menu_code")],
@@ -354,9 +376,9 @@ async def start(update, context):
     await show_main(update, is_new=True)
 
 async def show_main(update, is_new=False):
-    user_id = update.effective_user.id
+    uid = update.effective_user.id
     menu = MAIN_MENU.copy()
-    if user_id == OWNER_ID:
+    if uid == OWNER_ID:
         menu.append([InlineKeyboardButton("🔐 Admin", callback_data="admin_panel")])
     text = "🤖 **AI Coding Bot**\n\nSelect a category:"
     if is_new and hasattr(update, 'message'):
@@ -376,21 +398,21 @@ async def button_handler(update, context):
     if data == "main_menu":
         await show_main(update); return
 
-    # ---- Main menu navigation ----
+    # Menu navigation
     if data == "menu_ai":
-        await go(AI_MENU, "🤖 **AI Services**\n\nSelect an option:")
+        await go(AI_MENU, "🤖 **AI Services**")
     elif data == "menu_code":
-        await go(CODE_MENU, "🛠️ **Code Tools**\n\nSelect an option:")
+        await go(CODE_MENU, "🛠️ **Code Tools**")
     elif data == "menu_data":
-        await go(DATA_MENU, "📁 **My Data**\n\nSelect an option:")
+        await go(DATA_MENU, "📁 **My Data**")
     elif data == "menu_challenge":
-        await go(CHALLENGE_MENU, "🏆 **Challenges**\n\nSelect an option:")
+        await go(CHALLENGE_MENU, "🏆 **Challenges**")
 
-    # ---- AI Services ----
+    # AI Services
     elif data == "ask_ai":
         context.user_data['multi'] = False
         context.user_data['state'] = ASK_AI
-        await q.edit_message_text("💬 **Ask AI (Single)**\n\nType your coding question:", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
+        await q.edit_message_text("💬 **Ask AI (Single)**\n\nType your question:", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
     elif data == "super_ai":
         context.user_data['multi'] = True
         context.user_data['state'] = ASK_AI
@@ -405,24 +427,24 @@ async def button_handler(update, context):
         context.user_data['state'] = WAIT_DOCS
         await q.edit_message_text("📝 **Generate Docs**\n\nPaste your code:", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
 
-    # ---- Code Tools ----
+    # Code Tools
     elif data == "run_code":
         context.user_data['state'] = WAIT_RUN
-        await q.edit_message_text("▶️ **Run Code**\n\nPaste your code (Python, Java, C++, JS, Go, Rust):", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
+        await q.edit_message_text("▶️ **Run Code**\n\nPaste code (Python, Java, C++, JS, Go, Rust):", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
     elif data == "format_code":
         context.user_data['state'] = WAIT_FORMAT
         await q.edit_message_text("🎨 **Format Code**\n\nPaste your code:", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
     elif data == "convert_code":
         context.user_data['state'] = WAIT_CONVERT
-        await q.edit_message_text("🔄 **Convert Code**\n\nSend code and target language (e.g., 'Python to Java ...')", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
+        await q.edit_message_text("🔄 **Convert Code**\n\nSend 'Python to Java ...'", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
     elif data == "review_code":
         context.user_data['state'] = WAIT_REVIEW
-        await q.edit_message_text("🧐 **Review Code**\n\nPaste your code:", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
+        await q.edit_message_text("🧐 **Review Code**\n\nPaste code:", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
     elif data == "complexity":
         context.user_data['state'] = WAIT_COMPLEXITY
-        await q.edit_message_text("📊 **Complexity**\n\nPaste your code:", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
+        await q.edit_message_text("📊 **Complexity**\n\nPaste code:", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
 
-    # ---- Data ----
+    # Data
     elif data == "my_history":
         h = get_user_history(uid)
         text = "📚 **History**\n\n" + format_history(h) if h else "📭 No history."
@@ -433,10 +455,7 @@ async def button_handler(update, context):
             await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_data")]]), parse_mode="Markdown")
     elif data == "my_bookmarks":
         b = get_bookmarks(uid)
-        if not b:
-            text = "📌 No bookmarks."
-        else:
-            text = "📌 **Bookmarks**\n\n" + "\n".join(f"{i+1}. {x['query'][:40]}..." for i,x in enumerate(b))
+        text = "📌 **Bookmarks**\n\n" + "\n".join(f"{i+1}. {x['query'][:40]}..." for i,x in enumerate(b)) if b else "📌 No bookmarks."
         await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_data")]]), parse_mode="Markdown")
     elif data == "save_snippet":
         context.user_data['state'] = WAIT_SAVE_NAME
@@ -447,9 +466,7 @@ async def button_handler(update, context):
         if not s:
             await q.edit_message_text("📂 No snippets.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_data")]]))
             return
-        kb = []
-        for name in s:
-            kb.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"snippet_{name}")])
+        kb = [[InlineKeyboardButton(f"📄 {name}", callback_data=f"snippet_{name}")] for name in s]
         kb.append([InlineKeyboardButton("🔙 Back", callback_data="menu_data")])
         await q.edit_message_text("📂 **Snippets**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
     elif data.startswith("snippet_"):
@@ -474,9 +491,7 @@ async def button_handler(update, context):
         if not a:
             text = "📈 No data."
         else:
-            text = "📈 **Analytics (last 7 days)**\n\n"
-            for day, vals in sorted(a.items(), reverse=True)[:7]:
-                text += f"📅 {day}: Earned {vals.get('earnings',0)} PKR, Queries {vals.get('queries',0)}, Snippets {vals.get('snippets',0)}\n"
+            text = "📈 **Analytics (last 7 days)**\n\n" + "\n".join(f"📅 {d}: Earned {v.get('earnings',0)} PKR, Queries {v.get('queries',0)}, Snippets {v.get('snippets',0)}" for d,v in sorted(a.items(), reverse=True)[:7])
         await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_data")]]), parse_mode="Markdown")
     elif data == "export":
         data = export_user_data(uid)
@@ -490,7 +505,7 @@ async def button_handler(update, context):
         clear_user_history(uid)
         await q.edit_message_text("✅ History cleared.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_data")]]))
 
-    # ---- Challenge ----
+    # Challenges
     elif data == "daily_challenge":
         ch = get_current_challenge()
         text = f"🏆 **Daily Challenge**\n\n{ch['question']}\n\nUse /submit <answer>" if ch else "🏆 No challenge today."
@@ -503,7 +518,7 @@ async def button_handler(update, context):
             text = "📊 **Leaderboard**\n\n" + "\n".join(f"{i+1}. {uid[:6]} – {x['points']}pts" for i,(uid,x) in enumerate(lb[:10]))
         await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_challenge")]]), parse_mode="Markdown")
 
-    # ---- Admin ----
+    # Admin
     elif data == "admin_panel":
         if uid != OWNER_ID: await q.edit_message_text("❌ Access Denied."); return
         await q.edit_message_text("🔐 **Admin Panel**", reply_markup=InlineKeyboardMarkup(ADMIN_MENU), parse_mode="Markdown")
@@ -549,9 +564,9 @@ async def handle_message(update, context):
         if multi:
             reply = await ask_multiple_ai(uid, prompt)
         else:
-            reply = await call_hf_model("deepseek-ai/deepseek-coder-6.7b-instruct", prompt)
+            reply = await ask_single_ai(uid, prompt)
         if not reply:
-            reply = "⚠️ No response."
+            reply = "⚠️ No response. Please try again."
         inc_limit(uid)
         update_analytics(uid, "query")
         await update.message.reply_text(reply[:4000])
@@ -665,14 +680,34 @@ async def cancel(update, context):
 
 # ---------- MAIN ----------
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("cancel", cancel))
-    app.add_handler(CommandHandler("submit", submit_challenge))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("🚀 Bot is running with 7 models (multi-AI) – Clean dashboard.")
-    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+    application = (Application.builder()
+                   .token(BOT_TOKEN)
+                   .connect_timeout(60.0)
+                   .read_timeout(60.0)
+                   .write_timeout(60.0)
+                   .pool_timeout(60.0)
+                   .build())
+
+    # Add error handler
+    application.add_error_handler(error_handler)
+
+    # Handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("cancel", cancel))
+    application.add_handler(CommandHandler("submit", submit_challenge))
+    application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # Delete webhook and drop pending updates
+    import asyncio
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(application.bot.delete_webhook(drop_pending_updates=True))
+
+    print("🚀 Bot is running with 7 models – Clean dashboard.")
+    application.run_polling(allowed_updates=Update.ALL_TYPES,
+                            drop_pending_updates=True,
+                            poll_interval=1.0,
+                            timeout=60)
 
 if __name__ == "__main__":
     main()
