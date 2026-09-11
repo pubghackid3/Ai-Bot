@@ -1,11 +1,9 @@
-"""Green SMS -> Telegram Forwarder Bot - v10 (Final Pro)
+"""Green SMS -> Telegram Forwarder Bot - v11 (Final)
 
 Config:
-- Bot: @RN_OTP1_bot
+- SMS Forwarder Bot: @RN_OTP_bot
+- Button opens: @RN_OTP1_bot (main bot)
 - Channel: https://t.me/RN_OTP_1
-- All emojis via Unicode escapes (paste-safe)
-- Flag fallback (manual prefix detection)
-- Professional UI
 """
 
 from __future__ import annotations
@@ -28,7 +26,13 @@ GREEN_SMS_API_KEY = "gsp_5735fa94_Ufmcr2_GNpht0AqpKZLK5Lt6MQxBavnavSUwx3zw-hs"
 TELEGRAM_GROUP_ID = "-1004330079864"
 TELEGRAM_OWNER_ID = 8762845215
 TELEGRAM_CHANNEL_URL = "https://t.me/RN_OTP_1"
-BOT_USERNAME = "RN_OTP1_bot"
+
+# SMS forwarder bot (jis ka BOT_TOKEN neeche hai)
+BOT_USERNAME = "RN_OTP_bot"
+
+# Button click pe yeh bot khulega (aap ka main bot)
+BUTTON_BOT_USERNAME = "RN_OTP1_bot"
+
 BOT_TOKEN = "8354696843:AAEq3AUqSUSBToIf_tWA9UdtsMOjVMSTc-E"
 POLL_SECONDS = 5
 DATABASE_FILE = "sms_telegram_bot.sqlite3"
@@ -76,9 +80,6 @@ E_BOLT = "\u26A1"
 E_GLOBE = "\U0001F310"
 E_INFO = "\u2139"
 E_INBOX = "\U0001F4E9"
-E_LOCK = "\U0001F512"
-E_SPARK = "\u2728"
-E_PHONE = "\U0001F4F1"
 
 DIVIDER = "\u2501" * 14
 DOT = "\u2022"
@@ -129,7 +130,6 @@ COUNTRY_FLAGS = {
     "NZ": "\U0001F1F3\U0001F1FF",
 }
 
-# Manual prefix -> country fallback
 PREFIX_FALLBACK = [
     ("92", "PK"),
     ("44", "GB"),
@@ -348,12 +348,6 @@ def flag_for_number(value):
 
 
 def sms_text(message, masked=True):
-    """
-    Professional SMS card:
-
-        📩 New SMS
-        🇵🇰 923•••4567
-    """
     number = str(message.get("num", ""))
     flag = flag_for_number(number)
     if masked:
@@ -386,13 +380,6 @@ def otp_from_message(message_text):
 
 
 def message_buttons(message_text, sms_id, fallback=False):
-    """
-    Professional layout:
-
-        [ 📋 Copy OTP: 123456 ]
-        [ 👁 Full Message ]  [ 📢 Channel ]
-        [ 🤖 Open Bot ]
-    """
     otp = otp_from_message(message_text)
     keyboard = []
 
@@ -414,9 +401,9 @@ def message_buttons(message_text, sms_id, fallback=False):
         row2.append({"text": E_MEGA + " Channel", "url": TELEGRAM_CHANNEL_URL})
     keyboard.append(row2)
 
-    # Row 3: Bot
+    # Row 3: Bot (opens BUTTON_BOT_USERNAME, not the forwarder)
     row3 = []
-    clean_username = BOT_USERNAME.lstrip("@")
+    clean_username = BUTTON_BOT_USERNAME.lstrip("@")
     row3.append({"text": E_BOT + " Open Bot", "url": "https://t.me/" + clean_username})
     keyboard.append(row3)
 
@@ -1090,7 +1077,7 @@ async def main():
 
     print("=" * 60)
     print("Green SMS -> Telegram Forwarder")
-    print("v10 - Final Pro")
+    print("v11 - Final")
     print("=" * 60)
 
     forward_event = asyncio.Event()
@@ -1106,6 +1093,7 @@ async def main():
         last_dt = await state_value(conn, "last_sms_dt")
 
         logger.info("Bot: @" + BOT_USERNAME)
+        logger.info("Button bot: @" + BUTTON_BOT_USERNAME)
         logger.info("Group: " + TELEGRAM_GROUP_ID)
         logger.info("Channel: " + TELEGRAM_CHANNEL_URL)
         logger.info("Owner: " + str(TELEGRAM_OWNER_ID))
