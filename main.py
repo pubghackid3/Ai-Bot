@@ -1,713 +1,586 @@
-import os
-import logging
-import requests
-import json
+"""Green SMS -> Telegram Forwarder Bot - v5 (Professional UI)
+
+Features:
+- Clean & professional button layout
+- Minimal text, maximum emoji
+- Unlimited messages (1000+)
+- Non-owner users completely ignored
+- HTML parse_mode (no Markdown crash)
+- Same-timestamp safe pagination
+- 503 retry with reduced batch size
+- FIXED: OTP regex + smart OTP extraction
+"""
+
+from __future__ import annotations
+
 import asyncio
-import aiohttp
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes, ConversationHandler
+import hashlib
+import logging
+import re
+import sqlite3
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
-# ---------- CONFIG ----------
-BOT_TOKEN = "8956990017:AAFS07sAXyckqUN5GNkQHwXAiNZYPCVtKdM"
-OWNER_ID = 8762845215
-HF_TOKEN = "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"
-DAILY_LIMIT = 20
-MAX_USER_HISTORY = 5
+import aiosqlite
+import httpx
+import phonenumbers
 
-# ---------- MODELS ----------
-MODELS = [
-    "deepseek-ai/deepseek-coder-6.7b-instruct",
-    "codellama/CodeLlama-7b-Python-hf",
-    "bigcode/starcoder",
-    "microsoft/phi-1_5",
-    "google/flan-t5-base",
-    "mistralai/Mistral-7B-Instruct-v0.1",
-    "HuggingFaceH4/zephyr-7b-beta"
-]
-HF_API_URL = "https://api-inference.huggingface.co/models/{}"
-PISTON_API_URL = "https://emkc.org/api/v2/piston/execute"
+# ============ CONFIGURATION ============
+GREEN_SMS_API = "http://143.110.245.86/api/partner/v1/messages/"
+GREEN_SMS_API_KEY = "gsp_5735fa94_Ufmcr2_GNpht0AqpKZLK5Lt6MQxBavnavSUwx3zw-hs"
+TELEGRAM_GROUP_ID = "-1004330079864"
+TELEGRAM_OWNER_ID = 8762845215
+TELEGRAM_CHANNEL_URL = "https://t.me/ToolsByRehan"
+BOT_USERNAME = "@RN_OTP_bot"
+BOT_TOKEN = "8354696843:AAEq3AUqSUSBToIf_tWA9UdtsMOjVMSTc-E"
+POLL_SECONDS = 5
+DATABASE_FILE = "sms_telegram_bot.sqlite3"
+MAX_RECORDS = 200
+MAX_BATCHES = 100
+CLEANUP_DAYS = 30
+# ========================================
 
-# ---------- FILES ----------
-HISTORY_FILE = "history.json"
-SNIPPETS_FILE = "snippets.json"
-FEEDBACK_FILE = "feedback.json"
-BOOKMARKS_FILE = "bookmarks.json"
-CHALLENGES_FILE = "challenges.json"
-LEADERBOARD_FILE = "leaderboard.json"
-BADGES_FILE = "badges.json"
-ANALYTICS_FILE = "analytics.json"
-NOTIFICATIONS_FILE = "notifications.json"
-FILES_DIR = "user_files"
-os.makedirs(FILES_DIR, exist_ok=True)
+runtime_last_error: str | None = None
+runtime_last_poll: str | None = None
+http_client: httpx.AsyncClient | None = None
+current_api_index: int = 0
+api_keys: list[str] = []
 
-# ---------- STATES ----------
-ASK_AI, WAIT_SAVE_NAME, WAIT_EXPLAIN, WAIT_RUN, WAIT_BROADCAST, WAIT_LANG, \
-WAIT_FORMAT, WAIT_CONVERT, WAIT_REVIEW, WAIT_COMPLEXITY, WAIT_TESTS, WAIT_DOCS = range(12)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger("greensms_bot")
 
-# ---------- LOGGING ----------
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+COUNTRY_FLAGS = {
+    "PK": "🇵🇰", "US": "🇺🇸", "GB": "🇬🇧", "IN": "🇮🇳", "CA": "🇨🇦",
+    "AU": "🇦🇺", "DE": "🇩🇪", "FR": "🇫🇷", "IT": "🇮🇹", "ES": "🇪🇸",
+    "BR": "🇧🇷", "MX": "🇲🇽", "JP": "🇯🇵", "CN": "🇨🇳", "RU": "🇷🇺",
+    "ZA": "🇿🇦", "NG": "🇳🇬", "EG": "🇪🇬", "SA": "🇸🇦", "AE": "🇦🇪",
+    "BD": "🇧🇩", "ID": "🇮🇩", "MY": "🇲🇾", "SG": "🇸🇬", "HK": "🇭🇰",
+    "TR": "🇹🇷", "PL": "🇵🇱", "UA": "🇺🇦", "RO": "🇷🇴", "NL": "🇳🇱",
+    "BE": "🇧🇪", "CH": "🇨🇭", "AT": "🇦🇹", "SE": "🇸🇪", "NO": "🇳🇴",
+    "DK": "🇩🇰", "FI": "🇫🇮", "IE": "🇮🇪", "PT": "🇵🇹", "GR": "🇬🇷",
+}
 
-# ---------- HEALTH CHECK SERVER ----------
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
-def run_health_server():
-    port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(("0.0.0.0", port), HealthHandler)
-    server.serve_forever()
-threading.Thread(target=run_health_server, daemon=True).start()
 
-# ---------- JSON HELPERS ----------
-def load_json(f):
-    return json.load(open(f)) if os.path.exists(f) else {}
-def save_json(f, d):
-    with open(f, "w") as j:
-        json.dump(d, j, indent=2)
+def escape_html(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-def load_history(): return load_json(HISTORY_FILE)
-def save_history(d): save_json(HISTORY_FILE, d)
-def load_snippets(): return load_json(SNIPPETS_FILE)
-def save_snippets(d): save_json(SNIPPETS_FILE, d)
-def load_feedback(): return load_json(FEEDBACK_FILE)
-def save_feedback(d): save_json(FEEDBACK_FILE, d)
-def load_bookmarks(): return load_json(BOOKMARKS_FILE)
-def save_bookmarks(d): save_json(BOOKMARKS_FILE, d)
-def load_challenges(): return load_json(CHALLENGES_FILE)
-def save_challenges(d): save_json(CHALLENGES_FILE, d)
-def load_leaderboard(): return load_json(LEADERBOARD_FILE)
-def save_leaderboard(d): save_json(LEADERBOARD_FILE, d)
-def load_badges(): return load_json(BADGES_FILE)
-def save_badges(d): save_json(BADGES_FILE, d)
-def load_analytics(): return load_json(ANALYTICS_FILE)
-def save_analytics(d): save_json(ANALYTICS_FILE, d)
-def load_notifications(): return load_json(NOTIFICATIONS_FILE)
-def save_notifications(d): save_json(NOTIFICATIONS_FILE, d)
 
-# ---------- HISTORY ----------
-def get_user_history(user_id):
-    h = load_history()
-    return h.get(str(user_id), [])
-def add_to_history(user_id, role, content):
-    h = load_history()
-    u = str(user_id)
-    if u not in h: h[u] = []
-    h[u].append({"role": role, "content": content})
-    if user_id != OWNER_ID and len(h[u]) > MAX_USER_HISTORY*2:
-        h[u] = h[u][-MAX_USER_HISTORY*2:]
-    save_history(h)
-def clear_user_history(user_id):
-    h = load_history()
-    if str(user_id) in h:
-        del h[str(user_id)]
-        save_history(h)
-def format_history(h):
-    if not h: return "📭 Koi history nahi."
-    return "\n".join(f"{'👤' if e['role']=='user' else '🤖'} {e['content']}" for e in h)
+# ============ DATABASE ============
 
-# ---------- SNIPPETS ----------
-def save_snippet(user_id, name, code):
-    s = load_snippets()
-    u = str(user_id)
-    if u not in s: s[u] = {}
-    s[u][name] = code
-    save_snippets(s)
-def get_snippets(user_id):
-    return load_snippets().get(str(user_id), {})
-def delete_snippet(user_id, name):
-    s = load_snippets()
-    u = str(user_id)
-    if u in s and name in s[u]:
-        del s[u][name]
-        save_snippets(s)
-        return True
-    return False
+async def init_db() -> aiosqlite.Connection:
+    conn = await aiosqlite.connect(DATABASE_FILE)
+    conn.row_factory = aiosqlite.Row
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS forwarded_messages (
+            sms_id TEXT PRIMARY KEY,
+            claimed_at TEXT NOT NULL,
+            sent_at TEXT,
+            raw_num TEXT,
+            cli TEXT,
+            message_text TEXT,
+            payout TEXT,
+            dt TEXT
+        )
+    """)
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_sent_at ON forwarded_messages(sent_at)")
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS bot_state (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            api_key TEXT UNIQUE NOT NULL,
+            is_active BOOLEAN DEFAULT 1,
+            added_at TEXT NOT NULL
+        )
+    """)
+    await conn.commit()
+    return conn
 
-# ---------- BOOKMARKS ----------
-def add_bookmark(user_id, q, r):
-    b = load_bookmarks()
-    u = str(user_id)
-    if u not in b: b[u] = []
-    b[u].append({"query": q, "response": r[:200], "timestamp": str(datetime.now())})
-    save_bookmarks(b)
-def get_bookmarks(user_id):
-    return load_bookmarks().get(str(user_id), [])
 
-# ---------- CHALLENGES ----------
-def get_current_challenge():
-    c = load_challenges()
-    return c.get(max(c.keys())) if c else None
-def set_challenge(q, a):
-    c = load_challenges()
-    c[datetime.now().strftime("%Y-%m-%d")] = {"question": q, "answer": a.strip().lower()}
-    save_challenges(c)
-def submit_challenge(user_id, answer):
-    lb = load_leaderboard()
-    u = str(user_id)
-    if u not in lb: lb[u] = {"points": 0, "solved": 0, "history": []}
-    ch = get_current_challenge()
-    if not ch: return "No active challenge."
-    if ch["answer"] == answer.strip().lower():
-        lb[u]["points"] += 10
-        lb[u]["solved"] += 1
-        lb[u]["history"].append({"date": datetime.now().strftime("%Y-%m-%d"), "status": "solved"})
-        save_leaderboard(lb)
-        check_achievements(user_id)
-        return "✅ Correct! +10 points."
-    else:
-        lb[u]["history"].append({"date": datetime.now().strftime("%Y-%m-%d"), "status": "wrong"})
-        save_leaderboard(lb)
-        return "❌ Wrong answer."
-def get_leaderboard():
-    return sorted(load_leaderboard().items(), key=lambda x: x[1]["points"], reverse=True)
+async def state_value(conn, key: str, default: str = "") -> str:
+    async with conn.execute("SELECT value FROM bot_state WHERE key = ?", (key,)) as cursor:
+        row = await cursor.fetchone()
+        return str(row["value"]) if row else default
 
-# ---------- BADGES ----------
-def get_badges(user_id):
-    return load_badges().get(str(user_id), [])
-def award_badge(user_id, badge):
-    b = load_badges()
-    u = str(user_id)
-    if u not in b: b[u] = []
-    if badge not in b[u]:
-        b[u].append(badge)
-        save_badges(b)
-        return True
-    return False
-def check_achievements(user_id):
-    hist = get_user_history(user_id)
-    g = sum(1 for h in hist if "Gmail" in h.get("content",""))
-    if g >= 10: award_badge(user_id, "🥉 Bronze")
-    if g >= 50: award_badge(user_id, "🥈 Silver")
-    if g >= 100: award_badge(user_id, "🥇 Gold")
-    lb = load_leaderboard()
-    if str(user_id) in lb and lb[str(user_id)].get("solved",0) >= 10:
-        award_badge(user_id, "🏆 Challenge Champion")
-    if len(hist) >= 50:
-        award_badge(user_id, "🧠 AI Master")
 
-# ---------- ANALYTICS ----------
-def update_analytics(user_id, action, amt=0):
-    a = load_analytics()
-    u = str(user_id)
-    if u not in a: a[u] = {"days": {}}
-    today = datetime.now().strftime("%Y-%m-%d")
-    if today not in a[u]["days"]:
-        a[u]["days"][today] = {"earnings": 0, "queries": 0, "snippets": 0}
-    if action == "earn": a[u]["days"][today]["earnings"] += amt
-    elif action == "query": a[u]["days"][today]["queries"] += 1
-    elif action == "snippet": a[u]["days"][today]["snippets"] += 1
-    save_analytics(a)
-def get_analytics(user_id):
-    a = load_analytics().get(str(user_id), {})
-    return a.get("days", {})
+async def set_state(conn, key: str, value: str) -> None:
+    await conn.execute("""
+        INSERT INTO bot_state(key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    """, (key, value))
+    await conn.commit()
 
-# ---------- EXPORT ----------
-def export_user_data(user_id):
-    return json.dumps({
-        "history": get_user_history(user_id),
-        "snippets": get_snippets(user_id),
-        "bookmarks": get_bookmarks(user_id),
-        "badges": get_badges(user_id),
-        "analytics": get_analytics(user_id)
-    }, indent=2)
 
-# ---------- ANTI-SPAM ----------
-last_msg = {}
-def check_spam(uid):
-    if uid == OWNER_ID: return True
-    now = datetime.now()
-    if uid not in last_msg or (now - last_msg[uid]).total_seconds() >= 5:
-        last_msg[uid] = now
-        return True
-    return False
+async def save_message_data(conn, sms_id, raw_num, cli, message_text, payout, dt):
+    await conn.execute("""
+        INSERT INTO forwarded_messages(sms_id, claimed_at, raw_num, cli, message_text, payout, dt)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(sms_id) DO UPDATE SET
+            raw_num = excluded.raw_num,
+            cli = excluded.cli,
+            message_text = excluded.message_text,
+            payout = excluded.payout,
+            dt = excluded.dt
+    """, (sms_id, datetime.now(timezone.utc).isoformat(), raw_num, cli, message_text, payout, dt))
+    await conn.commit()
 
-# ---------- FEEDBACK ----------
-def add_feedback(uid, mid, rating):
-    f = load_feedback()
-    f[str(mid)] = {"user": uid, "rating": rating, "timestamp": str(datetime.now())}
-    save_feedback(f)
-def get_feedback_stats():
-    f = load_feedback().values()
-    likes = sum(1 for x in f if x["rating"]=="like")
-    return len(f), likes, len(f)-likes
 
-# ---------- USER LIMIT ----------
-reqs = {}
-def check_limit(uid):
-    if uid == OWNER_ID: return True
-    today = datetime.now().date()
-    if uid not in reqs or reqs[uid][1] != today:
-        reqs[uid] = [0, today]
-    if reqs[uid][0] >= DAILY_LIMIT:
+async def claim_message(conn, sms_id: str) -> bool:
+    async with conn.execute("SELECT sent_at FROM forwarded_messages WHERE sms_id = ?", (sms_id,)) as cursor:
+        existing = await cursor.fetchone()
+    if existing and existing["sent_at"] is not None:
         return False
-    return True
-def inc_limit(uid):
-    if uid == OWNER_ID: return
-    today = datetime.now().date()
-    if uid not in reqs or reqs[uid][1] != today:
-        reqs[uid] = [0, today]
-    reqs[uid][0] += 1
-def get_user_stats():
-    h = load_history()
-    return len(h), sum(len(v) for v in h.values())
+    if existing:
+        return True
+    await conn.execute(
+        "INSERT OR IGNORE INTO forwarded_messages(sms_id, claimed_at) VALUES (?, ?)",
+        (sms_id, datetime.now(timezone.utc).isoformat()),
+    )
+    await conn.commit()
+    async with conn.execute("SELECT 1 FROM forwarded_messages WHERE sms_id = ?", (sms_id,)) as cursor:
+        return await cursor.fetchone() is not None
 
-# ---------- AI HELPERS ----------
-async def call_hf_model(model, prompt, retries=3):
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    url = HF_API_URL.format(model)
-    payload = {"inputs": prompt, "parameters": {"max_new_tokens": 500, "temperature": 0.2}}
+
+async def mark_sent(conn, sms_id: str) -> None:
+    await conn.execute(
+        "UPDATE forwarded_messages SET sent_at = ? WHERE sms_id = ?",
+        (datetime.now(timezone.utc).isoformat(), sms_id),
+    )
+    await conn.commit()
+
+
+async def get_message_data(conn, sms_id: str) -> dict[str, Any] | None:
+    async with conn.execute(
+        "SELECT raw_num, cli, message_text, payout, dt FROM forwarded_messages WHERE sms_id = ?",
+        (sms_id,),
+    ) as cursor:
+        row = await cursor.fetchone()
+    if not row:
+        return None
+    return {
+        "raw_num": row["raw_num"] or "N/A",
+        "cli": row["cli"] or "N/A",
+        "message_text": row["message_text"] or "N/A",
+        "payout": row["payout"] or "0",
+        "dt": row["dt"] or "N/A",
+    }
+
+
+async def cleanup_old_records(conn, days: int = 30) -> int:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    async with conn.execute("DELETE FROM forwarded_messages WHERE sent_at < ?", (cutoff,)) as cursor:
+        deleted = cursor.rowcount
+    await conn.commit()
+    return deleted
+
+
+# ============ HELPERS ============
+
+def generate_sms_id(message: dict[str, Any]) -> str:
+    dt = str(message.get("dt", ""))
+    num = str(message.get("num", ""))
+    cli = str(message.get("cli", ""))
+    msg = str(message.get("message", ""))
+    content_hash = hashlib.md5(f"{cli}:{msg}".encode()).hexdigest()[:8]
+    return f"{dt}_{num}_{content_hash}"
+
+
+def mask_number(number: str) -> str:
+    if len(number) > 7:
+        return f"{number[:3]}•••{number[-4:]}"
+    return number or "Unknown"
+
+
+def flag_for_number(value: str | None) -> str:
+    if not value:
+        return "🌐"
+    try:
+        clean_number = re.sub(r"\D", "", str(value))
+        parsed = phonenumbers.parse(clean_number, None)
+        if phonenumbers.is_valid_number(parsed):
+            region = phonenumbers.region_code_for_number(parsed)
+            return COUNTRY_FLAGS.get(region, "🌐")
+    except Exception:
+        pass
+    return "🌐"
+
+
+def sms_text(message: dict[str, Any], masked: bool = True) -> str:
+    """Compact, professional message line."""
+    number = str(message.get("num", ""))
+    flag = flag_for_number(number)
+    display_number = mask_number(number) if masked else (number or "Unknown")
+    return f"{flag} <code>{escape_html(display_number)}</code>"
+
+
+def otp_from_message(message_text: str) -> str:
+    """
+    Smart OTP extraction:
+      1. Near keyword (OTP / code / PIN / verify / password)
+      2. First 4-8 digit standalone number
+      3. First 3-9 digit standalone number
+    """
+    if not message_text:
+        return "N/A"
+
+    keyword_match = re.search(
+        r"(?:otp|code|pin|verify|verification|password)[^\d]{0,15}(\d{3,9})",
+        message_text,
+        re.IGNORECASE,
+    )
+    if keyword_match:
+        return keyword_match.group(1)
+
+    m = re.search(r"(?<!\d)(\d{4,8})(?!\d)", message_text)
+    if m:
+        return m.group(1)
+
+    m = re.search(r"(?<!\d)(\d{3,9})(?!\d)", message_text)
+    return m.group(1) if m else "N/A"
+
+
+def message_buttons(message_text: str, sms_id: str, fallback: bool = False) -> dict[str, Any]:
+    """
+    Professional, compact button layout:
+
+        [ 📋 Copy OTP ]
+        [ 👁 Full SMS ]  [ 📢 Channel ]
+        [ 🤖 Bot ]
+    """
+    otp = otp_from_message(message_text)
+
+    # --- Row 1: OTP ---
+    row1 = []
+    if fallback:
+        # Fallback: show OTP in button text and copy via callback alert
+        if otp != "N/A":
+            row1.append({"text": f"📋 OTP: {otp}", "callback_data": f"otp:{otp}"})
+        else:
+            row1.append({"text": "❌ No OTP Found", "callback_data": "otp:none"})
+    else:
+        if otp != "N/A":
+            row1.append({"text": "📋 Copy OTP", "copy_text": {"text": otp}})
+        else:
+            row1.append({"text": "❌ No OTP Found", "callback_data": "otp:none"})
+
+    # --- Row 2: Full SMS + Channel ---
+    row2 = []
+    row2.append({"text": "👁 Full SMS", "callback_data": f"full:{sms_id}"})
+    if TELEGRAM_CHANNEL_URL and TELEGRAM_CHANNEL_URL != "https://t.me/your_channel":
+        row2.append({"text": "📢 Channel", "url": TELEGRAM_CHANNEL_URL})
+
+    # --- Row 3: Bot ---
+    row3 = []
+    if BOT_USERNAME:
+        clean_username = BOT_USERNAME.lstrip("@")
+        row3.append({"text": "🤖 Bot", "url": f"https://t.me/{clean_username}"})
+
+    keyboard = []
+    if row1:
+        keyboard.append(row1)
+    if row2:
+        keyboard.append(row2)
+    if row3:
+        keyboard.append(row3)
+
+    return {"inline_keyboard": keyboard}
+
+
+# ============ API MANAGEMENT ============
+
+async def add_api_key(conn, api_key: str) -> bool:
+    try:
+        await conn.execute(
+            "INSERT INTO api_keys (api_key, added_at) VALUES (?, ?)",
+            (api_key, datetime.now(timezone.utc).isoformat()),
+        )
+        await conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+
+async def remove_api_key(conn, api_key: str) -> bool:
+    async with conn.execute("DELETE FROM api_keys WHERE api_key = ?", (api_key,)) as cursor:
+        deleted = cursor.rowcount
+    await conn.commit()
+    return deleted > 0
+
+
+async def get_all_api_keys(conn) -> list[dict[str, Any]]:
+    async with conn.execute("SELECT api_key, is_active, added_at FROM api_keys ORDER BY id") as cursor:
+        rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+async def load_api_keys(conn) -> list[str]:
+    global api_keys, current_api_index, GREEN_SMS_API_KEY
+    keys = await get_all_api_keys(conn)
+    api_keys = [k["api_key"] for k in keys if k["is_active"]]
+
+    if api_keys:
+        current_api_index = 0
+        GREEN_SMS_API_KEY = api_keys[0]
+        logger.info(f"✅ Loaded {len(api_keys)} API keys")
+    else:
+        if GREEN_SMS_API_KEY:
+            api_keys = [GREEN_SMS_API_KEY]
+            current_api_index = 0
+            logger.info("⚠️ No API keys in DB, using hardcoded key")
+        else:
+            logger.error("❌ No API keys available!")
+
+    return api_keys
+
+
+def get_current_api_key() -> str:
+    global api_keys, current_api_index
+    if api_keys and current_api_index < len(api_keys):
+        return api_keys[current_api_index]
+    return GREEN_SMS_API_KEY
+
+
+async def rotate_api_key(conn) -> str | None:
+    global current_api_index, GREEN_SMS_API_KEY
+    if not api_keys:
+        return None
+    current_api_index = (current_api_index + 1) % len(api_keys)
+    GREEN_SMS_API_KEY = api_keys[current_api_index]
+    logger.info(f"🔄 Rotated to API key #{current_api_index + 1}")
+    return GREEN_SMS_API_KEY
+
+
+# ============ API FETCH ============
+
+async def fetch_all_messages(since_dt: str = "") -> list[dict[str, Any]]:
+    global current_api_index, GREEN_SMS_API_KEY
+
+    api_key = get_current_api_key()
+    if not api_key:
+        raise RuntimeError("No API key available")
+
+    all_messages = []
+    if not since_dt:
+        since_dt = "2020-01-01 00:00:00"
+
+    current_dt2 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    batch_count = 0
+    total_fetched = 0
+    last_used_dt2: str | None = None
+    records_limit = MAX_RECORDS
+
+    logger.info(f"🔍 Fetching: {since_dt} → {current_dt2}")
+    logger.info(f"🔑 API: {api_key[:20]}...")
+
+    while True:
+        try:
+            batch_count += 1
+            params = {"dt1": since_dt, "dt2": current_dt2, "records": records_limit}
+
+            response = await http_client.get(
+                GREEN_SMS_API,
+                headers={"Authorization": f"Bearer {api_key}"},
+                params=params,
+                timeout=30,
+            )
+
+            if response.status_code == 429:
+                retry_after = int(response.headers.get("Retry-After", 60))
+                logger.warning(f"⏳ Rate limited. Waiting {retry_after}s...")
+                await asyncio.sleep(retry_after)
+                continue
+
+            if response.status_code == 503:
+                new_limit = max(10, records_limit // 2)
+                if new_limit < records_limit:
+                    records_limit = new_limit
+                    logger.warning(f"⚠️ 503 → reducing records to {records_limit}")
+                    continue
+                logger.error("❌ 503 with minimum records. Stop.")
+                break
+
+            if response.status_code == 401:
+                logger.error(f"❌ 401 Unauthorized: {api_key[:20]}...")
+                conn = await init_db()
+                try:
+                    new_key = await rotate_api_key(conn)
+                    if new_key and new_key != api_key:
+                        logger.info("🔄 Rotated API key")
+                        api_key = new_key
+                        continue
+                finally:
+                    await conn.close()
+                raise RuntimeError("API 401 - check your API key")
+
+            if response.status_code != 200:
+                logger.error(f"❌ HTTP {response.status_code}: {response.text[:200]}")
+                break
+
+            payload = response.json()
+            if payload.get("status") == "error":
+                logger.error(f"❌ API error: {payload.get('msg', 'Unknown')}")
+                break
+
+            results = payload.get("data", [])
+            total = payload.get("total", 0)
+
+            logger.info(f"📄 Batch {batch_count}: {len(results)} msgs (total: {total})")
+
+            if not results:
+                break
+
+            all_messages.extend(results)
+            total_fetched += len(results)
+
+            if len(results) < records_limit:
+                logger.info(f"📌 Last batch ({len(results)} < {records_limit})")
+                break
+
+            oldest_dt_str = results[-1].get("dt", "")
+            if not oldest_dt_str:
+                break
+
+            if oldest_dt_str == last_used_dt2:
+                logger.info("📌 Same dt2 — done")
+                break
+
+            last_used_dt2 = current_dt2
+            current_dt2 = oldest_dt_str
+            logger.info(f"➡️ Next until {current_dt2}")
+
+            if batch_count >= MAX_BATCHES:
+                logger.warning(f"⚠️ Safety limit {MAX_BATCHES} batches")
+                break
+
+        except httpx.TimeoutException:
+            logger.error("❌ API timeout")
+            await asyncio.sleep(5)
+            continue
+        except Exception as e:
+            logger.error(f"❌ Fetch error: {e}")
+            break
+
+    logger.info(f"📨 Fetched {total_fetched} messages")
+    all_messages.reverse()
+    return all_messages
+
+
+# ============ TELEGRAM ============
+
+async def telegram_call(method: str, payload: dict[str, Any], retries: int = 3) -> dict[str, Any]:
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
+
     for attempt in range(retries):
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, headers=headers, json=payload, timeout=30) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        if isinstance(data, list):
-                            return data[0].get("generated_text", "").replace(prompt, "").strip()
-                        return data.get("generated_text", "").replace(prompt, "").strip()
-                    elif resp.status == 429:
-                        await asyncio.sleep(2 ** attempt)
-                        continue
-                    else:
-                        return ""
-        except:
-            await asyncio.sleep(1)
-    return ""
+            response = await http_client.post(url, json=payload, timeout=30)
 
-async def ask_multiple_ai(user_id, prompt):
-    # Try first 5 models
-    tasks = [call_hf_model(m, prompt) for m in MODELS[:5]]
-    responses = await asyncio.gather(*tasks, return_exceptions=True)
-    valid = [r for r in responses if isinstance(r, str) and len(r) > 10]
-    if not valid:
-        # Fallback to single model with more retries
-        single = await call_hf_model("deepseek-ai/deepseek-coder-6.7b-instruct", prompt, retries=5)
-        if single:
-            return single
-        else:
-            return "❌ All AI models are busy. Please try again later."
-    if len(valid) == 1:
-        return valid[0]
-    # Synthesize using deepseek
-    combined = "I got multiple responses. Synthesize them into one answer:\n\n" + "\n".join(f"R{i+1}: {r[:300]}" for i,r in enumerate(valid[:3]))
-    final = await call_hf_model("deepseek-ai/deepseek-coder-6.7b-instruct", combined, retries=3)
-    if final and len(final) > 10:
-        return final + "\n\n🤖 (Combined from multiple models)"
-    else:
-        return valid[0] + "\n\n🤖 (Single model response)"
+            if response.status_code == 429:
+                retry_after = int(response.headers.get("Retry-After", 1))
+                logger.warning(f"⏳ TG rate limit. Wait {retry_after}s")
+                await asyncio.sleep(retry_after)
+                continue
 
-async def ask_single_ai(user_id, prompt):
-    return await call_hf_model("deepseek-ai/deepseek-coder-6.7b-instruct", prompt, retries=5)
+            if not response.is_success:
+                if attempt < retries - 1:
+                    wait = 2 ** attempt
+                    await asyncio.sleep(wait)
+                    continue
+                raise RuntimeError(f"TG HTTP {response.status_code}: {response.text[:500]}")
 
-def run_code(lang, code):
+            result = response.json()
+            if not result.get("ok"):
+                desc = result.get("description", "Unknown")
+                d = desc.lower()
+                if any(k in d for k in ("reply markup", "button", "parse", "copy_text")):
+                    raise RuntimeError(f"TG markup error: {desc}")
+                if result.get("error_code") == 429 and attempt < retries - 1:
+                    await asyncio.sleep(result.get("parameters", {}).get("retry_after", 1))
+                    continue
+                raise RuntimeError(f"TG error: {desc}")
+            return result
+
+        except httpx.TimeoutException:
+            if attempt < retries - 1:
+                await asyncio.sleep(2 ** attempt)
+                continue
+            raise RuntimeError("TG timeout")
+        except RuntimeError:
+            raise
+        except Exception as e:
+            if attempt < retries - 1:
+                await asyncio.sleep(2 ** attempt)
+                continue
+            raise RuntimeError(f"TG request failed: {e}")
+
+
+async def send_group_message(text: str, reply_markup: dict[str, Any]) -> dict[str, Any]:
+    payload = {
+        "chat_id": TELEGRAM_GROUP_ID,
+        "text": text,
+        "parse_mode": "HTML",
+        "reply_markup": reply_markup,
+        "disable_web_page_preview": True,
+    }
     try:
-        r = requests.post(PISTON_API_URL, json={"language": lang, "source": code}, timeout=15)
-        if r.status_code == 200:
-            return r.json().get("output", "✅ No output.").strip()
-        return f"⚠️ Error: {r.text}"
+        return await telegram_call("sendMessage", payload)
+    except RuntimeError as e:
+        err = str(e).lower()
+        if any(k in err for k in ("reply markup", "button", "parse", "copy_text")):
+            logger.warning("⚠️ copy_text unsupported → fallback")
+            sms_id = ""
+            for row in reply_markup.get("inline_keyboard", []):
+                for btn in row:
+                    if btn.get("callback_data", "").startswith("full:"):
+                        sms_id = btn["callback_data"].split(":", 1)[1]
+                        break
+            # Rebuild fallback buttons using full text (retrieve from DB is safer, but
+            # text here is masked — use it as-is; OTP extraction from masked text still works
+            # because OTP digits are not masked).
+            fallback_markup = message_buttons(text, sms_id, fallback=True)
+            payload["reply_markup"] = fallback_markup
+            return await telegram_call("sendMessage", payload)
+        raise
+
+
+async def telegram_updates(offset: int) -> list[dict[str, Any]]:
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+    params = {"offset": offset, "timeout": 30, "limit": 100}
+    try:
+        response = await http_client.get(url, params=params, timeout=35)
+        if not response.is_success:
+            return []
+        result = response.json()
+        if not result.get("ok"):
+            return []
+        return result.get("result", [])
+    except httpx.TimeoutException:
+        return []
     except Exception as e:
-        return f"❌ {str(e)}"
+        logger.error(f"❌ Updates error: {e}")
+        return []
 
-# ---------- ERROR HANDLER ----------
-async def error_handler(update, context):
-    logging.error(f"Update {update} caused error {context.error}")
-    # Optionally send error to owner
-    try:
-        await context.bot.send_message(OWNER_ID, f"⚠️ Error: {context.error}")
-    except:
-        pass
 
-# ---------- KEYBOARDS ----------
-MAIN_MENU = [
-    [InlineKeyboardButton("🤖 AI Services", callback_data="menu_ai")],
-    [InlineKeyboardButton("🛠️ Code Tools", callback_data="menu_code")],
-    [InlineKeyboardButton("📁 My Data", callback_data="menu_data")],
-    [InlineKeyboardButton("🏆 Challenges", callback_data="menu_challenge")],
-]
-AI_MENU = [
-    [InlineKeyboardButton("💬 Ask AI (Single)", callback_data="ask_ai")],
-    [InlineKeyboardButton("🚀 Super AI (Multi)", callback_data="super_ai")],
-    [InlineKeyboardButton("🔍 Explain Code", callback_data="explain_code")],
-    [InlineKeyboardButton("🧪 Generate Tests", callback_data="generate_tests")],
-    [InlineKeyboardButton("📝 Generate Docs", callback_data="generate_docs")],
-    [InlineKeyboardButton("🔙 Main", callback_data="main_menu")],
-]
-CODE_MENU = [
-    [InlineKeyboardButton("▶️ Run Code", callback_data="run_code")],
-    [InlineKeyboardButton("🎨 Format Code", callback_data="format_code")],
-    [InlineKeyboardButton("🔄 Convert Code", callback_data="convert_code")],
-    [InlineKeyboardButton("🧐 Review Code", callback_data="review_code")],
-    [InlineKeyboardButton("📊 Complexity", callback_data="complexity")],
-    [InlineKeyboardButton("🔙 Main", callback_data="main_menu")],
-]
-DATA_MENU = [
-    [InlineKeyboardButton("📚 My History", callback_data="my_history")],
-    [InlineKeyboardButton("📌 Bookmarks", callback_data="my_bookmarks")],
-    [InlineKeyboardButton("💾 Save Snippet", callback_data="save_snippet")],
-    [InlineKeyboardButton("📂 My Snippets", callback_data="my_snippets")],
-    [InlineKeyboardButton("🏅 My Badges", callback_data="my_badges")],
-    [InlineKeyboardButton("📈 Analytics", callback_data="analytics")],
-    [InlineKeyboardButton("📋 Export Data", callback_data="export")],
-    [InlineKeyboardButton("🗑️ Clear History", callback_data="clear_history")],
-    [InlineKeyboardButton("🔙 Main", callback_data="main_menu")],
-]
-CHALLENGE_MENU = [
-    [InlineKeyboardButton("🏆 Daily Challenge", callback_data="daily_challenge")],
-    [InlineKeyboardButton("📊 Leaderboard", callback_data="leaderboard")],
-    [InlineKeyboardButton("🔙 Main", callback_data="main_menu")],
-]
-ADMIN_MENU = [
-    [InlineKeyboardButton("👥 Users List", callback_data="admin_users")],
-    [InlineKeyboardButton("📊 Stats", callback_data="admin_stats")],
-    [InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast")],
-    [InlineKeyboardButton("🏆 Set Challenge", callback_data="admin_set_challenge")],
-    [InlineKeyboardButton("⚙️ Set Daily Limit", callback_data="admin_set_limit")],
-    [InlineKeyboardButton("🗑️ Clear User History", callback_data="admin_clear_user")],
-    [InlineKeyboardButton("🔙 Main", callback_data="main_menu")],
-]
-BACK_BUTTON = [[InlineKeyboardButton("🔙 Back", callback_data="main_menu")]]
+# ============ STATUS ============
 
-# ---------- BOT HANDLERS ----------
-async def start(update, context):
-    await show_main(update, is_new=True)
+async def status_text(conn, last_error: str | None) -> str:
+    async with conn.execute("SELECT COUNT(*) AS c FROM forwarded_messages WHERE sent_at IS NOT NULL") as c:
+        total = (await c.fetchone())["c"]
+    async with conn.execute("SELECT COUNT(*) AS c FROM forwarded_messages WHERE sent_at IS NULL") as c:
+        pending = (await c.fetchone())["c"]
+    last_dt = await state_value(conn, "last_sms_dt")
+    api_count = len(await get_all_api_keys(conn))
 
-async def show_main(update, is_new=False):
-    uid = update.effective_user.id
-    menu = MAIN_MENU.copy()
-    if uid == OWNER_ID:
-        menu.append([InlineKeyboardButton("🔐 Admin", callback_data="admin_panel")])
-    text = "🤖 **AI Coding Bot**\n\nSelect a category:"
-    if is_new and hasattr(update, 'message'):
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(menu), parse_mode="Markdown")
-    else:
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(menu), parse_mode="Markdown")
+    state_icon = "🟢" if not last_error else "🔴"
 
-async def button_handler(update, context):
-    q = update.callback_query
-    await q.answer()
-    data = q.data
-    uid = update.effective_user.id
-
-    def go(menu, text):
-        return q.edit_message_text(text, reply_markup=InlineKeyboardMarkup(menu), parse_mode="Markdown")
-
-    if data == "main_menu":
-        await show_main(update); return
-
-    # Menu navigation
-    if data == "menu_ai":
-        await go(AI_MENU, "🤖 **AI Services**")
-    elif data == "menu_code":
-        await go(CODE_MENU, "🛠️ **Code Tools**")
-    elif data == "menu_data":
-        await go(DATA_MENU, "📁 **My Data**")
-    elif data == "menu_challenge":
-        await go(CHALLENGE_MENU, "🏆 **Challenges**")
-
-    # AI Services
-    elif data == "ask_ai":
-        context.user_data['multi'] = False
-        context.user_data['state'] = ASK_AI
-        await q.edit_message_text("💬 **Ask AI (Single)**\n\nType your question:", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
-    elif data == "super_ai":
-        context.user_data['multi'] = True
-        context.user_data['state'] = ASK_AI
-        await q.edit_message_text("🚀 **Super AI (Multi)**\n\nType your question (7 models):", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
-    elif data == "explain_code":
-        context.user_data['state'] = WAIT_EXPLAIN
-        await q.edit_message_text("🔍 **Explain Code**\n\nPaste your code:", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
-    elif data == "generate_tests":
-        context.user_data['state'] = WAIT_TESTS
-        await q.edit_message_text("🧪 **Generate Tests**\n\nPaste your function/class:", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
-    elif data == "generate_docs":
-        context.user_data['state'] = WAIT_DOCS
-        await q.edit_message_text("📝 **Generate Docs**\n\nPaste your code:", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
-
-    # Code Tools
-    elif data == "run_code":
-        context.user_data['state'] = WAIT_RUN
-        await q.edit_message_text("▶️ **Run Code**\n\nPaste code (Python, Java, C++, JS, Go, Rust):", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
-    elif data == "format_code":
-        context.user_data['state'] = WAIT_FORMAT
-        await q.edit_message_text("🎨 **Format Code**\n\nPaste your code:", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
-    elif data == "convert_code":
-        context.user_data['state'] = WAIT_CONVERT
-        await q.edit_message_text("🔄 **Convert Code**\n\nSend 'Python to Java ...'", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
-    elif data == "review_code":
-        context.user_data['state'] = WAIT_REVIEW
-        await q.edit_message_text("🧐 **Review Code**\n\nPaste code:", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
-    elif data == "complexity":
-        context.user_data['state'] = WAIT_COMPLEXITY
-        await q.edit_message_text("📊 **Complexity**\n\nPaste code:", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
-
-    # Data
-    elif data == "my_history":
-        h = get_user_history(uid)
-        text = "📚 **History**\n\n" + format_history(h) if h else "📭 No history."
-        if len(text) > 4000:
-            await q.message.reply_text(text[:4000])
-            await q.message.reply_text("🔙 Back", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_data")]]))
-        else:
-            await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_data")]]), parse_mode="Markdown")
-    elif data == "my_bookmarks":
-        b = get_bookmarks(uid)
-        text = "📌 **Bookmarks**\n\n" + "\n".join(f"{i+1}. {x['query'][:40]}..." for i,x in enumerate(b)) if b else "📌 No bookmarks."
-        await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_data")]]), parse_mode="Markdown")
-    elif data == "save_snippet":
-        context.user_data['state'] = WAIT_SAVE_NAME
-        context.user_data['saving_code'] = None
-        await q.edit_message_text("💾 **Save Snippet**\n\nSend code first, then name.", reply_markup=InlineKeyboardMarkup(BACK_BUTTON), parse_mode="Markdown")
-    elif data == "my_snippets":
-        s = get_snippets(uid)
-        if not s:
-            await q.edit_message_text("📂 No snippets.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_data")]]))
-            return
-        kb = [[InlineKeyboardButton(f"📄 {name}", callback_data=f"snippet_{name}")] for name in s]
-        kb.append([InlineKeyboardButton("🔙 Back", callback_data="menu_data")])
-        await q.edit_message_text("📂 **Snippets**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
-    elif data.startswith("snippet_"):
-        name = data[8:]
-        code = get_snippets(uid).get(name)
-        if code:
-            await q.edit_message_text(f"📄 **{name}**\n\n```\n{code}\n```", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🗑️ Delete", callback_data=f"del_{name}"), InlineKeyboardButton("🔙 Back", callback_data="my_snippets")]]), parse_mode="Markdown")
-        else:
-            await q.edit_message_text("❌ Not found.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="my_snippets")]]))
-    elif data.startswith("del_"):
-        name = data[4:]
-        if delete_snippet(uid, name):
-            await q.edit_message_text(f"✅ Deleted '{name}'.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="my_snippets")]]))
-        else:
-            await q.edit_message_text("❌ Failed.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="my_snippets")]]))
-    elif data == "my_badges":
-        b = get_badges(uid)
-        text = "🏅 **Badges**\n\n" + ("\n".join(b) if b else "No badges yet.")
-        await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_data")]]), parse_mode="Markdown")
-    elif data == "analytics":
-        a = get_analytics(uid)
-        if not a:
-            text = "📈 No data."
-        else:
-            text = "📈 **Analytics (last 7 days)**\n\n" + "\n".join(f"📅 {d}: Earned {v.get('earnings',0)} PKR, Queries {v.get('queries',0)}, Snippets {v.get('snippets',0)}" for d,v in sorted(a.items(), reverse=True)[:7])
-        await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_data")]]), parse_mode="Markdown")
-    elif data == "export":
-        data = export_user_data(uid)
-        fpath = f"export_{uid}.json"
-        with open(fpath, "w") as f: f.write(data)
-        await q.message.reply_document(open(fpath, "rb"), caption="📋 Your data")
-        os.remove(fpath)
-    elif data == "clear_history":
-        await q.edit_message_text("🗑️ Clear all history?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Yes", callback_data="clear_confirm"), InlineKeyboardButton("❌ No", callback_data="menu_data")]]), parse_mode="Markdown")
-    elif data == "clear_confirm":
-        clear_user_history(uid)
-        await q.edit_message_text("✅ History cleared.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_data")]]))
-
-    # Challenges
-    elif data == "daily_challenge":
-        ch = get_current_challenge()
-        text = f"🏆 **Daily Challenge**\n\n{ch['question']}\n\nUse /submit <answer>" if ch else "🏆 No challenge today."
-        await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_challenge")]]), parse_mode="Markdown")
-    elif data == "leaderboard":
-        lb = get_leaderboard()
-        if not lb:
-            text = "📊 No one solved yet."
-        else:
-            text = "📊 **Leaderboard**\n\n" + "\n".join(f"{i+1}. {uid[:6]} – {x['points']}pts" for i,(uid,x) in enumerate(lb[:10]))
-        await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_challenge")]]), parse_mode="Markdown")
-
-    # Admin
-    elif data == "admin_panel":
-        if uid != OWNER_ID: await q.edit_message_text("❌ Access Denied."); return
-        await q.edit_message_text("🔐 **Admin Panel**", reply_markup=InlineKeyboardMarkup(ADMIN_MENU), parse_mode="Markdown")
-    elif data == "admin_users":
-        if uid != OWNER_ID: return
-        h = load_history()
-        text = "👥 **Users**\n\n" + "\n".join(f"{u}: {len(v)} msgs" for u,v in h.items())
-        await q.edit_message_text(text[:4000], reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="admin_panel")]]), parse_mode="Markdown")
-    elif data == "admin_stats":
-        if uid != OWNER_ID: return
-        users, msgs = get_user_stats()
-        fb_total, likes, dislikes = get_feedback_stats()
-        await q.edit_message_text(f"📊 **Stats**\n\n👥 Users: {users}\n💬 Messages: {msgs}\n📝 Daily Limit: {DAILY_LIMIT}\n👍 Likes: {likes}\n👎 Dislikes: {dislikes}\n👑 Owner: {OWNER_ID}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="admin_panel")]]), parse_mode="Markdown")
-    elif data == "admin_broadcast":
-        context.user_data['state'] = WAIT_BROADCAST
-        await q.edit_message_text("📢 **Broadcast**\n\nSend message:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="admin_panel")]]), parse_mode="Markdown")
-    elif data == "admin_set_challenge":
-        context.user_data['state'] = WAIT_CHALLENGE_SET
-        await q.edit_message_text("🏆 **Set Challenge**\n\nSend: `Question | Answer`", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="admin_panel")]]), parse_mode="Markdown")
-    elif data == "admin_set_limit":
-        context.user_data['state'] = 'waiting_set_limit'
-        await q.edit_message_text("⚙️ **Set Daily Limit**\n\nSend number:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="admin_panel")]]), parse_mode="Markdown")
-    elif data == "admin_clear_user":
-        context.user_data['state'] = 'waiting_clear_user'
-        await q.edit_message_text("🗑️ **Clear User History**\n\nSend user ID:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="admin_panel")]]), parse_mode="Markdown")
-
-# ---------- MESSAGE HANDLER ----------
-async def handle_message(update, context):
-    uid = update.effective_user.id
-    msg = update.message.text
-    state = context.user_data.get('state')
-
-    if not check_spam(uid):
-        await update.message.reply_text("⏳ Slow down!")
-        return
-
-    async def process(prompt, hint=""):
-        if not check_limit(uid):
-            await update.message.reply_text(f"❌ Daily limit {DAILY_LIMIT} reached.")
-            return
-        multi = context.user_data.get('multi', False)
-        await update.message.reply_text("⏳ Thinking..." + (" (7 models)" if multi else ""))
-        if multi:
-            reply = await ask_multiple_ai(uid, prompt)
-        else:
-            reply = await ask_single_ai(uid, prompt)
-        if not reply:
-            reply = "⚠️ No response. Please try again."
-        inc_limit(uid)
-        update_analytics(uid, "query")
-        await update.message.reply_text(reply[:4000])
-        context.user_data['state'] = None
-        await update.message.reply_text("🔙 Back", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main", callback_data="main_menu")]]))
-
-    if state == ASK_AI:
-        await process(msg)
-    elif state == WAIT_EXPLAIN:
-        await process(f"Explain line by line:\n{msg}")
-    elif state == WAIT_FORMAT:
-        await process(f"Format properly:\n{msg}")
-    elif state == WAIT_CONVERT:
-        if "to" in msg.lower():
-            parts = msg.lower().split("to", 1)
-            lang = parts[0].strip().split()[-1]
-            code = parts[1].strip()
-            await process(f"Convert to {lang}:\n{code}")
-        else:
-            await update.message.reply_text("❌ Use 'language to target' format.", reply_markup=InlineKeyboardMarkup(BACK_BUTTON))
-    elif state == WAIT_REVIEW:
-        await process(f"Review code:\n{msg}")
-    elif state == WAIT_COMPLEXITY:
-        await process(f"Complexity of:\n{msg}")
-    elif state == WAIT_TESTS:
-        await process(f"Generate tests for:\n{msg}")
-    elif state == WAIT_DOCS:
-        await process(f"Generate docs for:\n{msg}")
-    elif state == WAIT_RUN:
-        lang = "python"
-        code = msg
-        if "public class" in code or "System.out.println" in code: lang = "java"
-        elif "int main" in code or "std::cout" in code: lang = "cpp"
-        elif "function" in code or "console.log" in code: lang = "javascript"
-        elif "package main" in code or "fmt.Println" in code: lang = "go"
-        elif "fn main" in code or "println!" in code: lang = "rust"
-        await update.message.reply_text(f"⏳ Running {lang}...")
-        out = run_code(lang, code)
-        await update.message.reply_text(f"```\n{out}\n```", parse_mode="Markdown")
-        context.user_data['state'] = None
-    elif state == WAIT_SAVE_NAME:
-        if context.user_data.get('saving_code') is None:
-            context.user_data['saving_code'] = msg
-            await update.message.reply_text("✅ Code received. Now send a name:", reply_markup=InlineKeyboardMarkup(BACK_BUTTON))
-        else:
-            code = context.user_data['saving_code']
-            name = msg.strip()
-            if name:
-                save_snippet(uid, name, code)
-                update_analytics(uid, "snippet")
-                await update.message.reply_text(f"✅ Snippet '{name}' saved!")
-            else:
-                await update.message.reply_text("❌ Invalid name.")
-            context.user_data['saving_code'] = None
-            context.user_data['state'] = None
-            await update.message.reply_text("🔙 Main", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main", callback_data="main_menu")]]))
-    elif state == WAIT_BROADCAST:
-        if uid != OWNER_ID: return
-        h = load_history()
-        users = list(h.keys())
-        sent, failed = 0, 0
-        for uid2 in users:
-            try:
-                await context.bot.send_message(int(uid2), f"📢 Broadcast:\n{msg}")
-                sent += 1
-            except:
-                failed += 1
-        await update.message.reply_text(f"✅ Broadcast done.\nSent: {sent}\nFailed: {failed}")
-        context.user_data['state'] = None
-    elif state == WAIT_CHALLENGE_SET:
-        if uid != OWNER_ID: return
-        try:
-            q, a = msg.split('|', 1)
-            set_challenge(q.strip(), a.strip())
-            await update.message.reply_text("🏆 Challenge set!")
-        except:
-            await update.message.reply_text("❌ Use: Question | Answer")
-        context.user_data['state'] = None
-    elif state == 'waiting_set_limit':
-        if uid != OWNER_ID: return
-        try:
-            global DAILY_LIMIT
-            DAILY_LIMIT = int(msg)
-            await update.message.reply_text(f"✅ Limit set to {DAILY_LIMIT}")
-        except:
-            await update.message.reply_text("❌ Invalid number.")
-        context.user_data['state'] = None
-    elif state == 'waiting_clear_user':
-        if uid != OWNER_ID: return
-        try:
-            target = int(msg)
-            clear_user_history(target)
-            await update.message.reply_text(f"✅ User {target} history cleared.")
-        except:
-            await update.message.reply_text("❌ Invalid ID.")
-        context.user_data['state'] = None
-    else:
-        await update.message.reply_text("Use buttons below.", reply_markup=InlineKeyboardMarkup(MAIN_MENU))
-
-async def submit_challenge(update, context):
-    if not context.args:
-        await update.message.reply_text("Usage: /submit <answer>")
-        return
-    ans = ' '.join(context.args)
-    result = submit_challenge(update.effective_user.id, ans)
-    await update.message.reply_text(result)
-
-async def cancel(update, context):
-    context.user_data.clear()
-    await update.message.reply_text("✅ Cancelled.", reply_markup=InlineKeyboardMarkup(MAIN_MENU))
-
-# ---------- MAIN ----------
-def main():
-    application = (Application.builder()
-                   .token(BOT_TOKEN)
-                   .connect_timeout(60.0)
-                   .read_timeout(60.0)
-                   .write_timeout(60.0)
-                   .pool_timeout(60.0)
-                   .build())
-
-    # Add error handler
-    application.add_error_handler(error_handler)
-
-    # Handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("cancel", cancel))
-    application.add_handler(CommandHandler("submit", submit_challenge))
-    application.add_handler(CallbackQueryHandler(button_handler))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    # Delete webhook and drop pending updates
-    import asyncio
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(application.bot.delete_webhook(drop_pending_updates=True))
-
-    print("🚀 Bot is running with 7 models – Clean dashboard.")
-    application.run_polling(allowed_updates=Update.ALL_TYPES,
-                            drop_pending_updates=True,
-                            poll_interval=1.0,
-                            timeout=60)
-
-if __name__ == "__main__":
-    main()
+    return (
+        "📊 <b>Bot Status</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"{state_icon} <b>State:</b> {'Running' if not last_error
