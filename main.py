@@ -1,10 +1,8 @@
-"""Green SMS -> Telegram Forwarder Bot - v7 (Paste-Safe)
+"""Green SMS -> Telegram Forwarder Bot - v8 (Final Pro UI)
 
-Fixed for Railway:
-- No multi-line lists (paste-safe)
-- No box-drawing Unicode (paste-safe)
-- No nested f-string quotes
-- Simple string concatenation everywhere
+All emojis use Unicode escapes (paste-safe)
+Professional compact UI
+No multi-line lists, no nested quotes, no box chars
 """
 
 from __future__ import annotations
@@ -49,15 +47,80 @@ logging.basicConfig(
 )
 logger = logging.getLogger("greensms_bot")
 
+# ============ EMOJI CONSTANTS (Unicode escapes) ============
+E_CLIP = "\U0001F4CB"
+E_EYES = "\U0001F440"
+E_MEGA = "\U0001F4E2"
+E_BOT = "\U0001F916"
+E_CROSS = "\u274C"
+E_CHECK = "\u2705"
+E_GREEN = "\U0001F7E2"
+E_RED = "\U0001F534"
+E_KEY = "\U0001F511"
+E_OLDKEY = "\U0001F5DD"
+E_CHART = "\U0001F4CA"
+E_CAL = "\U0001F4C5"
+E_OUT = "\U0001F4E4"
+E_HOUR = "\u23F3"
+E_USER = "\U0001F464"
+E_CLOCK = "\U0001F550"
+E_MSG = "\U0001F4AC"
+E_ROCKET = "\U0001F680"
+E_GEAR = "\u2699"
+E_FILE = "\U0001F4C1"
+E_DB = "\U0001F5C4"
+E_STAR = "\u2B50"
+E_BOLT = "\u26A1"
+E_SHIELD = "\U0001F6E1"
+E_GLOBE = "\U0001F310"
+E_WARN = "\u26A0"
+E_INFO = "\u2139"
+
+DIVIDER = "\u2501" * 14
+DOT = "\u2022"
+
+# ============ COUNTRY FLAGS (Unicode escapes) ============
 COUNTRY_FLAGS = {
-    "PK": "PK", "US": "US", "GB": "GB", "IN": "IN", "CA": "CA",
-    "AU": "AU", "DE": "DE", "FR": "FR", "IT": "IT", "ES": "ES",
-    "BR": "BR", "MX": "MX", "JP": "JP", "CN": "CN", "RU": "RU",
-    "ZA": "ZA", "NG": "NG", "EG": "EG", "SA": "SA", "AE": "AE",
-    "BD": "BD", "ID": "ID", "MY": "MY", "SG": "SG", "HK": "HK",
-    "TR": "TR", "PL": "PL", "UA": "UA", "RO": "RO", "NL": "NL",
-    "BE": "BE", "CH": "CH", "AT": "AT", "SE": "SE", "NO": "NO",
-    "DK": "DK", "FI": "FI", "IE": "IE", "PT": "PT", "GR": "GR",
+    "PK": "\U0001F1F5\U0001F1F0",
+    "US": "\U0001F1FA\U0001F1F8",
+    "GB": "\U0001F1EC\U0001F1E7",
+    "IN": "\U0001F1EE\U0001F1F3",
+    "CA": "\U0001F1E8\U0001F1E6",
+    "AU": "\U0001F1E6\U0001F1FA",
+    "DE": "\U0001F1E9\U0001F1EA",
+    "FR": "\U0001F1EB\U0001F1F7",
+    "IT": "\U0001F1EE\U0001F1F9",
+    "ES": "\U0001F1EA\U0001F1F8",
+    "BR": "\U0001F1E7\U0001F1F7",
+    "MX": "\U0001F1F2\U0001F1FD",
+    "JP": "\U0001F1EF\U0001F1F5",
+    "CN": "\U0001F1E8\U0001F1F3",
+    "RU": "\U0001F1F7\U0001F1FA",
+    "ZA": "\U0001F1FF\U0001F1E6",
+    "NG": "\U0001F1F3\U0001F1EC",
+    "EG": "\U0001F1EA\U0001F1EC",
+    "SA": "\U0001F1F8\U0001F1E6",
+    "AE": "\U0001F1E6\U0001F1EA",
+    "BD": "\U0001F1E7\U0001F1E9",
+    "ID": "\U0001F1EE\U0001F1E9",
+    "MY": "\U0001F1F2\U0001F1FE",
+    "SG": "\U0001F1F8\U0001F1EC",
+    "HK": "\U0001F1ED\U0001F1F0",
+    "TR": "\U0001F1F9\U0001F1F7",
+    "PL": "\U0001F1F5\U0001F1F1",
+    "UA": "\U0001F1FA\U0001F1E6",
+    "RO": "\U0001F1F7\U0001F1F4",
+    "NL": "\U0001F1F3\U0001F1F1",
+    "BE": "\U0001F1E7\U0001F1EA",
+    "CH": "\U0001F1E8\U0001F1ED",
+    "AT": "\U0001F1E6\U0001F1F9",
+    "SE": "\U0001F1F8\U0001F1EA",
+    "NO": "\U0001F1F3\U0001F1F4",
+    "DK": "\U0001F1E9\U0001F1F0",
+    "FI": "\U0001F1EB\U0001F1EE",
+    "IE": "\U0001F1EE\U0001F1EA",
+    "PT": "\U0001F1F5\U0001F1F9",
+    "GR": "\U0001F1EC\U0001F1F7",
 }
 
 
@@ -204,22 +267,22 @@ def generate_sms_id(message):
 
 def mask_number(number):
     if len(number) > 7:
-        return number[:3] + "..." + number[-4:]
+        return number[:3] + "\u2022\u2022\u2022" + number[-4:]
     return number or "Unknown"
 
 
 def flag_for_number(value):
     if not value:
-        return ""
+        return E_GLOBE
     try:
         clean_number = re.sub(r"\D", "", str(value))
         parsed = phonenumbers.parse(clean_number, None)
         if phonenumbers.is_valid_number(parsed):
             region = phonenumbers.region_code_for_number(parsed)
-            return COUNTRY_FLAGS.get(region, "")
+            return COUNTRY_FLAGS.get(region, E_GLOBE)
     except Exception:
         pass
-    return ""
+    return E_GLOBE
 
 
 def sms_text(message, masked=True):
@@ -229,8 +292,7 @@ def sms_text(message, masked=True):
         display_number = mask_number(number)
     else:
         display_number = number or "Unknown"
-    prefix = flag + " " if flag else ""
-    return prefix + "<code>" + escape_html(display_number) + "</code>"
+    return flag + " <code>" + escape_html(display_number) + "</code>"
 
 
 def otp_from_message(message_text):
@@ -256,26 +318,29 @@ def message_buttons(message_text, sms_id, fallback=False):
     otp = otp_from_message(message_text)
     keyboard = []
 
+    # Row 1: OTP
     row1 = []
     if otp != "N/A":
         if fallback:
-            row1.append({"text": "Copy OTP: " + otp, "callback_data": "otp:" + otp})
+            row1.append({"text": E_CLIP + " OTP: " + otp, "callback_data": "otp:" + otp})
         else:
-            row1.append({"text": "Copy OTP", "copy_text": {"text": otp}})
+            row1.append({"text": E_CLIP + " Copy OTP", "copy_text": {"text": otp}})
     else:
-        row1.append({"text": "No OTP Found", "callback_data": "otp:none"})
+        row1.append({"text": E_CROSS + " No OTP", "callback_data": "otp:none"})
     keyboard.append(row1)
 
+    # Row 2: Full SMS + Channel
     row2 = []
-    row2.append({"text": "Full SMS", "callback_data": "full:" + sms_id})
+    row2.append({"text": E_EYES + " Full SMS", "callback_data": "full:" + sms_id})
     if TELEGRAM_CHANNEL_URL and TELEGRAM_CHANNEL_URL != "https://t.me/your_channel":
-        row2.append({"text": "Channel", "url": TELEGRAM_CHANNEL_URL})
+        row2.append({"text": E_MEGA + " Channel", "url": TELEGRAM_CHANNEL_URL})
     keyboard.append(row2)
 
+    # Row 3: Bot
     row3 = []
     if BOT_USERNAME:
         clean_username = BOT_USERNAME.lstrip("@")
-        row3.append({"text": "Bot", "url": "https://t.me/" + clean_username})
+        row3.append({"text": E_BOT + " Bot", "url": "https://t.me/" + clean_username})
         keyboard.append(row3)
 
     return {"inline_keyboard": keyboard}
@@ -563,7 +628,7 @@ async def telegram_updates(offset):
         return []
 
 
-# ============ STATUS (paste-safe) ============
+# ============ STATUS TEXT ============
 
 async def status_text(conn, last_error):
     async with conn.execute(
@@ -582,8 +647,10 @@ async def status_text(conn, last_error):
     api_count = len(await get_all_api_keys(conn))
 
     if last_error:
+        state_icon = E_RED
         state_label = "Error"
     else:
+        state_icon = E_GREEN
         state_label = "Running"
 
     err_label = last_error or "none"
@@ -591,19 +658,19 @@ async def status_text(conn, last_error):
     last_dt_label = last_dt or "-"
     now_label = datetime.now(timezone.utc).strftime("%H:%M:%S")
 
-    result = "Bot Status\n"
-    result += "--------------------\n"
-    result += "State: " + state_label + "\n"
-    result += "APIs: " + str(api_count) + "\n"
-    result += "Active: " + escape_html(active_key) + "...\n"
-    result += "Group: " + escape_html(TELEGRAM_GROUP_ID) + "\n"
-    result += "Poll: " + str(POLL_SECONDS) + "s\n"
-    result += "Last DT: " + escape_html(last_dt_label) + "\n"
-    result += "Sent: " + str(total) + "\n"
-    result += "Pending: " + str(pending) + "\n"
-    result += "Owner: " + str(TELEGRAM_OWNER_ID) + "\n"
-    result += "Now: " + now_label + " UTC\n"
-    result += "Error: " + escape_html(err_label)
+    result = E_CHART + " <b>Bot Status</b>\n"
+    result += DIVIDER + "\n"
+    result += state_icon + " <b>State:</b> " + state_label + "\n"
+    result += E_KEY + " <b>APIs:</b> " + str(api_count) + "\n"
+    result += E_OLDKEY + " <b>Active:</b> <code>" + escape_html(active_key) + "...</code>\n"
+    result += E_MEGA + " <b>Group:</b> <code>" + escape_html(TELEGRAM_GROUP_ID) + "</code>\n"
+    result += E_CLOCK + " <b>Poll:</b> " + str(POLL_SECONDS) + "s\n"
+    result += E_CAL + " <b>Last DT:</b> <code>" + escape_html(last_dt_label) + "</code>\n"
+    result += E_OUT + " <b>Sent:</b> " + str(total) + "\n"
+    result += E_HOUR + " <b>Pending:</b> " + str(pending) + "\n"
+    result += E_USER + " <b>Owner:</b> <code>" + str(TELEGRAM_OWNER_ID) + "</code>\n"
+    result += E_BOLT + " <b>Now:</b> " + now_label + " UTC\n"
+    result += E_CROSS + " <b>Error:</b> <code>" + escape_html(err_label) + "</code>"
     return result
 
 
@@ -703,6 +770,7 @@ async def command_loop(forward_event):
                     if sender.get("id") != TELEGRAM_OWNER_ID:
                         continue
 
+                    # === Callback (button presses) ===
                     if callback:
                         data = str(callback.get("data", ""))
                         callback_id = callback.get("id", "")
@@ -713,10 +781,10 @@ async def command_loop(forward_event):
                             sms_id = data.split(":", 1)[1]
                             msg_data = await get_message_data(conn, sms_id)
                             if msg_data:
-                                alert = "Msg: " + msg_data["message_text"]
+                                alert = E_MSG + " " + msg_data["message_text"]
                                 alert = alert[:200]
                             else:
-                                alert = "Message expired."
+                                alert = E_CROSS + " Message expired."
                             try:
                                 await telegram_call("answerCallbackQuery", {
                                     "callback_query_id": callback_id,
@@ -729,9 +797,9 @@ async def command_loop(forward_event):
                         elif data.startswith("otp:"):
                             otp = data.split(":", 1)[1]
                             if otp == "none":
-                                alert = "No OTP found in this message."
+                                alert = E_CROSS + " No OTP found in this message."
                             else:
-                                alert = "OTP: " + otp
+                                alert = E_CLIP + " OTP: " + otp
                             try:
                                 await telegram_call("answerCallbackQuery", {
                                     "callback_query_id": callback_id,
@@ -742,22 +810,23 @@ async def command_loop(forward_event):
                                 pass
                         continue
 
+                    # === Owner private commands only ===
                     if chat.get("type") != "private":
                         continue
 
                     cmd = text.strip().split(maxsplit=1)[0].split("@")[0].lower()
 
                     if cmd == "/start":
-                        start_text = "Green SMS Forwarder\n"
-                        start_text += "--------------------\n"
-                        start_text += "Online\n\n"
-                        start_text += "Group: " + escape_html(TELEGRAM_GROUP_ID) + "\n"
-                        start_text += "Owner: " + str(TELEGRAM_OWNER_ID) + "\n\n"
-                        start_text += "API Commands:\n"
-                        start_text += "/addapi KEY\n"
-                        start_text += "/remapi KEY\n"
-                        start_text += "/apilist\n\n"
-                        start_text += "/help - all commands"
+                        start_text = E_BOT + " <b>Green SMS Forwarder</b>\n"
+                        start_text += DIVIDER + "\n"
+                        start_text += E_CHECK + " <b>Online</b>\n\n"
+                        start_text += E_MEGA + " <b>Group:</b> <code>" + escape_html(TELEGRAM_GROUP_ID) + "</code>\n"
+                        start_text += E_USER + " <b>Owner:</b> <code>" + str(TELEGRAM_OWNER_ID) + "</code>\n\n"
+                        start_text += E_KEY + " <b>API Commands</b>\n"
+                        start_text += DOT + " /addapi <code>KEY</code>\n"
+                        start_text += DOT + " /remapi <code>KEY</code>\n"
+                        start_text += DOT + " /apilist\n\n"
+                        start_text += E_INFO + " /help - all commands"
                         await telegram_call("sendMessage", {
                             "chat_id": chat["id"],
                             "text": start_text,
@@ -765,19 +834,19 @@ async def command_loop(forward_event):
                         })
 
                     elif cmd == "/help":
-                        help_text = "Commands\n"
-                        help_text += "--------------------\n"
-                        help_text += "Control:\n"
-                        help_text += "/start\n"
-                        help_text += "/status\n"
-                        help_text += "/stats\n"
-                        help_text += "/reset\n"
-                        help_text += "/forwardnow\n"
-                        help_text += "/cleanup\n\n"
-                        help_text += "API:\n"
-                        help_text += "/addapi KEY\n"
-                        help_text += "/remapi KEY\n"
-                        help_text += "/apilist"
+                        help_text = E_CHART + " <b>Commands</b>\n"
+                        help_text += DIVIDER + "\n"
+                        help_text += E_GEAR + " <b>Control</b>\n"
+                        help_text += DOT + " /start\n"
+                        help_text += DOT + " /status\n"
+                        help_text += DOT + " /stats\n"
+                        help_text += DOT + " /reset\n"
+                        help_text += DOT + " /forwardnow\n"
+                        help_text += DOT + " /cleanup\n\n"
+                        help_text += E_KEY + " <b>API</b>\n"
+                        help_text += DOT + " /addapi <code>KEY</code>\n"
+                        help_text += DOT + " /remapi <code>KEY</code>\n"
+                        help_text += DOT + " /apilist"
                         await telegram_call("sendMessage", {
                             "chat_id": chat["id"],
                             "text": help_text,
@@ -796,7 +865,8 @@ async def command_loop(forward_event):
                         await set_state(conn, "last_sms_dt", "")
                         await telegram_call("sendMessage", {
                             "chat_id": chat["id"],
-                            "text": "Reset done. Bot will re-fetch all.",
+                            "text": E_CHECK + " <b>Reset done</b>\nBot will re-fetch all.",
+                            "parse_mode": "HTML",
                         })
 
                     elif cmd == "/stats":
@@ -816,12 +886,12 @@ async def command_loop(forward_event):
                             row = await c.fetchone()
                             all_recs = row[0]
 
-                        stats_text = "Statistics\n"
-                        stats_text += "--------------------\n"
-                        stats_text += "Sent: " + str(total) + "\n"
-                        stats_text += "Pending: " + str(pending) + "\n"
-                        stats_text += "Records: " + str(all_recs) + "\n"
-                        stats_text += "File: " + escape_html(DATABASE_FILE)
+                        stats_text = E_CHART + " <b>Statistics</b>\n"
+                        stats_text += DIVIDER + "\n"
+                        stats_text += E_OUT + " <b>Sent:</b> " + str(total) + "\n"
+                        stats_text += E_HOUR + " <b>Pending:</b> " + str(pending) + "\n"
+                        stats_text += E_FILE + " <b>Records:</b> " + str(all_recs) + "\n"
+                        stats_text += E_DB + " <code>" + escape_html(DATABASE_FILE) + "</code>"
                         await telegram_call("sendMessage", {
                             "chat_id": chat["id"],
                             "text": stats_text,
@@ -831,7 +901,8 @@ async def command_loop(forward_event):
                     elif cmd == "/forwardnow":
                         await telegram_call("sendMessage", {
                             "chat_id": chat["id"],
-                            "text": "Triggered.",
+                            "text": E_ROCKET + " <b>Triggered</b>",
+                            "parse_mode": "HTML",
                         })
                         forward_event.set()
 
@@ -839,7 +910,8 @@ async def command_loop(forward_event):
                         deleted = await cleanup_old_records(conn, CLEANUP_DAYS)
                         await telegram_call("sendMessage", {
                             "chat_id": chat["id"],
-                            "text": "Cleaned: " + str(deleted) + " records (> " + str(CLEANUP_DAYS) + "d)",
+                            "text": E_CHECK + " <b>Cleaned:</b> " + str(deleted) + " records (>" + str(CLEANUP_DAYS) + "d)",
+                            "parse_mode": "HTML",
                         })
 
                     elif cmd == "/addapi":
@@ -847,7 +919,8 @@ async def command_loop(forward_event):
                         if len(parts) < 2:
                             await telegram_call("sendMessage", {
                                 "chat_id": chat["id"],
-                                "text": "Usage: /addapi YOUR_KEY",
+                                "text": E_CROSS + " <b>Usage:</b>\n<code>/addapi YOUR_KEY</code>",
+                                "parse_mode": "HTML",
                             })
                             continue
                         api_key = parts[1]
@@ -856,13 +929,13 @@ async def command_loop(forward_event):
                             await load_api_keys(conn)
                             await telegram_call("sendMessage", {
                                 "chat_id": chat["id"],
-                                "text": "API Added: " + escape_html(api_key[:20]) + "...",
+                                "text": E_CHECK + " <b>API Added</b>\n" + E_KEY + " <code>" + escape_html(api_key[:20]) + "...</code>",
                                 "parse_mode": "HTML",
                             })
                         else:
                             await telegram_call("sendMessage", {
                                 "chat_id": chat["id"],
-                                "text": "API key already exists.",
+                                "text": E_CROSS + " API key already exists.",
                             })
 
                     elif cmd == "/remapi":
@@ -870,7 +943,8 @@ async def command_loop(forward_event):
                         if len(parts) < 2:
                             await telegram_call("sendMessage", {
                                 "chat_id": chat["id"],
-                                "text": "Usage: /remapi YOUR_KEY",
+                                "text": E_CROSS + " <b>Usage:</b>\n<code>/remapi YOUR_KEY</code>",
+                                "parse_mode": "HTML",
                             })
                             continue
                         api_key = parts[1]
@@ -879,13 +953,13 @@ async def command_loop(forward_event):
                             await load_api_keys(conn)
                             await telegram_call("sendMessage", {
                                 "chat_id": chat["id"],
-                                "text": "API Removed: " + escape_html(api_key[:20]) + "...",
+                                "text": E_CHECK + " <b>API Removed</b>\n" + E_KEY + " <code>" + escape_html(api_key[:20]) + "...</code>",
                                 "parse_mode": "HTML",
                             })
                         else:
                             await telegram_call("sendMessage", {
                                 "chat_id": chat["id"],
-                                "text": "API key not found.",
+                                "text": E_CROSS + " API key not found.",
                             })
 
                     elif cmd == "/apilist":
@@ -893,19 +967,20 @@ async def command_loop(forward_event):
                         if not keys:
                             await telegram_call("sendMessage", {
                                 "chat_id": chat["id"],
-                                "text": "No API keys stored.",
+                                "text": E_INFO + " No API keys stored.",
                             })
                             continue
 
                         current_key = get_current_api_key()
-                        list_text = "API Keys\n"
-                        list_text += "--------------------\n"
+                        list_text = E_KEY + " <b>API Keys</b>\n"
+                        list_text += DIVIDER + "\n"
                         for k in keys:
                             if k["api_key"] == current_key:
-                                mark = "[ACTIVE] "
+                                mark = E_GREEN + " <b>ACTIVE</b>"
                             else:
-                                mark = "[STANDBY] "
-                            list_text += mark + escape_html(k["api_key"][:20]) + "...\n"
+                                mark = E_GLOBE + " standby"
+                            list_text += mark + "\n"
+                            list_text += "   <code>" + escape_html(k["api_key"][:20]) + "...</code>\n"
 
                         await telegram_call("sendMessage", {
                             "chat_id": chat["id"],
@@ -937,7 +1012,7 @@ async def main():
 
     print("=" * 60)
     print("Green SMS -> Telegram Forwarder")
-    print("v7 - Paste-Safe")
+    print("v8 - Final Pro UI")
     print("=" * 60)
 
     forward_event = asyncio.Event()
