@@ -1,14 +1,13 @@
-"""Green SMS -> Telegram Forwarder Bot - v5 (Professional UI)
+"""Green SMS -> Telegram Forwarder Bot - v6 (Professional)
 
-Features:
-- Clean & professional button layout
-- Minimal text, maximum emoji
-- Unlimited messages (1000+)
-- Non-owner users completely ignored
-- HTML parse_mode (no Markdown crash)
-- Same-timestamp safe pagination
-- 503 retry with reduced batch size
-- FIXED: OTP regex + smart OTP extraction
+✅ Fixed: f-string nested quotes (Railway crash)
+✅ Fixed: OTP regex (single backslash)
+✅ Professional button layout
+✅ Minimal text, maximum emoji
+✅ HTML parse_mode (no Markdown crash)
+✅ Same-timestamp safe pagination
+✅ Unlimited messages (1000+)
+✅ Non-owner users silently ignored
 """
 
 from __future__ import annotations
@@ -86,7 +85,9 @@ async def init_db() -> aiosqlite.Connection:
             dt TEXT
         )
     """)
-    await conn.execute("CREATE INDEX IF NOT EXISTS idx_sent_at ON forwarded_messages(sent_at)")
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sent_at ON forwarded_messages(sent_at)"
+    )
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS bot_state (
             key TEXT PRIMARY KEY,
@@ -134,7 +135,9 @@ async def save_message_data(conn, sms_id, raw_num, cli, message_text, payout, dt
 
 
 async def claim_message(conn, sms_id: str) -> bool:
-    async with conn.execute("SELECT sent_at FROM forwarded_messages WHERE sms_id = ?", (sms_id,)) as cursor:
+    async with conn.execute(
+        "SELECT sent_at FROM forwarded_messages WHERE sms_id = ?", (sms_id,)
+    ) as cursor:
         existing = await cursor.fetchone()
     if existing and existing["sent_at"] is not None:
         return False
@@ -145,7 +148,9 @@ async def claim_message(conn, sms_id: str) -> bool:
         (sms_id, datetime.now(timezone.utc).isoformat()),
     )
     await conn.commit()
-    async with conn.execute("SELECT 1 FROM forwarded_messages WHERE sms_id = ?", (sms_id,)) as cursor:
+    async with conn.execute(
+        "SELECT 1 FROM forwarded_messages WHERE sms_id = ?", (sms_id,)
+    ) as cursor:
         return await cursor.fetchone() is not None
 
 
@@ -176,7 +181,9 @@ async def get_message_data(conn, sms_id: str) -> dict[str, Any] | None:
 
 async def cleanup_old_records(conn, days: int = 30) -> int:
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    async with conn.execute("DELETE FROM forwarded_messages WHERE sent_at < ?", (cutoff,)) as cursor:
+    async with conn.execute(
+        "DELETE FROM forwarded_messages WHERE sent_at < ?", (cutoff,)
+    ) as cursor:
         deleted = cursor.rowcount
     await conn.commit()
     return deleted
@@ -214,7 +221,6 @@ def flag_for_number(value: str | None) -> str:
 
 
 def sms_text(message: dict[str, Any], masked: bool = True) -> str:
-    """Compact, professional message line."""
     number = str(message.get("num", ""))
     flag = flag_for_number(number)
     display_number = mask_number(number) if masked else (number or "Unknown")
@@ -224,7 +230,7 @@ def sms_text(message: dict[str, Any], masked: bool = True) -> str:
 def otp_from_message(message_text: str) -> str:
     """
     Smart OTP extraction:
-      1. Near keyword (OTP / code / PIN / verify / password)
+      1. Number near keyword (OTP / code / PIN / verify / password)
       2. First 4-8 digit standalone number
       3. First 3-9 digit standalone number
     """
@@ -249,7 +255,7 @@ def otp_from_message(message_text: str) -> str:
 
 def message_buttons(message_text: str, sms_id: str, fallback: bool = False) -> dict[str, Any]:
     """
-    Professional, compact button layout:
+    Professional compact layout:
 
         [ 📋 Copy OTP ]
         [ 👁 Full SMS ]  [ 📢 Channel ]
@@ -257,27 +263,22 @@ def message_buttons(message_text: str, sms_id: str, fallback: bool = False) -> d
     """
     otp = otp_from_message(message_text)
 
-    # --- Row 1: OTP ---
+    # Row 1 — OTP
     row1 = []
-    if fallback:
-        # Fallback: show OTP in button text and copy via callback alert
-        if otp != "N/A":
+    if otp != "N/A":
+        if fallback:
             row1.append({"text": f"📋 OTP: {otp}", "callback_data": f"otp:{otp}"})
         else:
-            row1.append({"text": "❌ No OTP Found", "callback_data": "otp:none"})
-    else:
-        if otp != "N/A":
             row1.append({"text": "📋 Copy OTP", "copy_text": {"text": otp}})
-        else:
-            row1.append({"text": "❌ No OTP Found", "callback_data": "otp:none"})
+    else:
+        row1.append({"text": "❌ No OTP Found", "callback_data": "otp:none"})
 
-    # --- Row 2: Full SMS + Channel ---
-    row2 = []
-    row2.append({"text": "👁 Full SMS", "callback_data": f"full:{sms_id}"})
+    # Row 2 — Full SMS + Channel
+    row2 = [{"text": "👁 Full SMS", "callback_data": f"full:{sms_id}"}]
     if TELEGRAM_CHANNEL_URL and TELEGRAM_CHANNEL_URL != "https://t.me/your_channel":
         row2.append({"text": "📢 Channel", "url": TELEGRAM_CHANNEL_URL})
 
-    # --- Row 3: Bot ---
+    # Row 3 — Bot
     row3 = []
     if BOT_USERNAME:
         clean_username = BOT_USERNAME.lstrip("@")
@@ -309,14 +310,18 @@ async def add_api_key(conn, api_key: str) -> bool:
 
 
 async def remove_api_key(conn, api_key: str) -> bool:
-    async with conn.execute("DELETE FROM api_keys WHERE api_key = ?", (api_key,)) as cursor:
+    async with conn.execute(
+        "DELETE FROM api_keys WHERE api_key = ?", (api_key,)
+    ) as cursor:
         deleted = cursor.rowcount
     await conn.commit()
     return deleted > 0
 
 
 async def get_all_api_keys(conn) -> list[dict[str, Any]]:
-    async with conn.execute("SELECT api_key, is_active, added_at FROM api_keys ORDER BY id") as cursor:
+    async with conn.execute(
+        "SELECT api_key, is_active, added_at FROM api_keys ORDER BY id"
+    ) as cursor:
         rows = await cursor.fetchall()
     return [dict(row) for row in rows]
 
@@ -502,7 +507,9 @@ async def telegram_call(method: str, payload: dict[str, Any], retries: int = 3) 
                 if any(k in d for k in ("reply markup", "button", "parse", "copy_text")):
                     raise RuntimeError(f"TG markup error: {desc}")
                 if result.get("error_code") == 429 and attempt < retries - 1:
-                    await asyncio.sleep(result.get("parameters", {}).get("retry_after", 1))
+                    await asyncio.sleep(
+                        result.get("parameters", {}).get("retry_after", 1)
+                    )
                     continue
                 raise RuntimeError(f"TG error: {desc}")
             return result
@@ -541,9 +548,6 @@ async def send_group_message(text: str, reply_markup: dict[str, Any]) -> dict[st
                     if btn.get("callback_data", "").startswith("full:"):
                         sms_id = btn["callback_data"].split(":", 1)[1]
                         break
-            # Rebuild fallback buttons using full text (retrieve from DB is safer, but
-            # text here is masked — use it as-is; OTP extraction from masked text still works
-            # because OTP digits are not masked).
             fallback_markup = message_buttons(text, sms_id, fallback=True)
             payload["reply_markup"] = fallback_markup
             return await telegram_call("sendMessage", payload)
@@ -568,19 +572,33 @@ async def telegram_updates(offset: int) -> list[dict[str, Any]]:
         return []
 
 
-# ============ STATUS ============
+# ============ STATUS TEXT (FIXED — no nested f-string quotes) ============
 
 async def status_text(conn, last_error: str | None) -> str:
-    async with conn.execute("SELECT COUNT(*) AS c FROM forwarded_messages WHERE sent_at IS NOT NULL") as c:
+    async with conn.execute(
+        "SELECT COUNT(*) AS c FROM forwarded_messages WHERE sent_at IS NOT NULL"
+    ) as c:
         total = (await c.fetchone())["c"]
-    async with conn.execute("SELECT COUNT(*) AS c FROM forwarded_messages WHERE sent_at IS NULL") as c:
+
+    async with conn.execute(
+        "SELECT COUNT(*) AS c FROM forwarded_messages WHERE sent_at IS NULL"
+    ) as c:
         pending = (await c.fetchone())["c"]
+
     last_dt = await state_value(conn, "last_sms_dt")
     api_count = len(await get_all_api_keys(conn))
 
+    # All values pre-computed — no quotes inside f-string
     state_icon = "🟢" if not last_error else "🔴"
+    state_label = "Running" if not last_error else "Error"
+    err_label = last_error or "none"
+    active_key = get_current_api_key()[:20]
+    last_dt_label = last_dt or "—"
+    now_label = datetime.now(timezone.utc).strftime("%H:%M:%S")
 
-    return (
-        "📊 <b>Bot Status</b>\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        f"{state_icon} <b>State:</b> {'Running' if not last_error
+    lines = [
+        "📊 <b>Bot Status</b>",
+        "━━━━━━━━━━━━━━━━━━",
+        f"{state_icon} <b>State:</b> {state_label}",
+        f"🔑 <b>APIs:</b> {api_count}",
+   
