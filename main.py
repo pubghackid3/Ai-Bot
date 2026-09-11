@@ -1,8 +1,11 @@
-"""Green SMS -> Telegram Forwarder Bot - v8 (Final Pro UI)
+"""Green SMS -> Telegram Forwarder Bot - v10 (Final Pro)
 
-All emojis use Unicode escapes (paste-safe)
-Professional compact UI
-No multi-line lists, no nested quotes, no box chars
+Config:
+- Bot: @RN_OTP1_bot
+- Channel: https://t.me/RN_OTP_1
+- All emojis via Unicode escapes (paste-safe)
+- Flag fallback (manual prefix detection)
+- Professional UI
 """
 
 from __future__ import annotations
@@ -24,8 +27,8 @@ GREEN_SMS_API = "http://143.110.245.86/api/partner/v1/messages/"
 GREEN_SMS_API_KEY = "gsp_5735fa94_Ufmcr2_GNpht0AqpKZLK5Lt6MQxBavnavSUwx3zw-hs"
 TELEGRAM_GROUP_ID = "-1004330079864"
 TELEGRAM_OWNER_ID = 8762845215
-TELEGRAM_CHANNEL_URL = "https://t.me/ToolsByRehan"
-BOT_USERNAME = "@RN_OTP1_bot"
+TELEGRAM_CHANNEL_URL = "https://t.me/RN_OTP_1"
+BOT_USERNAME = "RN_OTP1_bot"
 BOT_TOKEN = "8354696843:AAEq3AUqSUSBToIf_tWA9UdtsMOjVMSTc-E"
 POLL_SECONDS = 5
 DATABASE_FILE = "sms_telegram_bot.sqlite3"
@@ -47,7 +50,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("greensms_bot")
 
-# ============ EMOJI CONSTANTS (Unicode escapes) ============
+# ============ EMOJI CONSTANTS ============
 E_CLIP = "\U0001F4CB"
 E_EYES = "\U0001F440"
 E_MEGA = "\U0001F4E2"
@@ -69,17 +72,18 @@ E_ROCKET = "\U0001F680"
 E_GEAR = "\u2699"
 E_FILE = "\U0001F4C1"
 E_DB = "\U0001F5C4"
-E_STAR = "\u2B50"
 E_BOLT = "\u26A1"
-E_SHIELD = "\U0001F6E1"
 E_GLOBE = "\U0001F310"
-E_WARN = "\u26A0"
 E_INFO = "\u2139"
+E_INBOX = "\U0001F4E9"
+E_LOCK = "\U0001F512"
+E_SPARK = "\u2728"
+E_PHONE = "\U0001F4F1"
 
 DIVIDER = "\u2501" * 14
 DOT = "\u2022"
 
-# ============ COUNTRY FLAGS (Unicode escapes) ============
+# ============ COUNTRY FLAGS ============
 COUNTRY_FLAGS = {
     "PK": "\U0001F1F5\U0001F1F0",
     "US": "\U0001F1FA\U0001F1F8",
@@ -121,7 +125,54 @@ COUNTRY_FLAGS = {
     "IE": "\U0001F1EE\U0001F1EA",
     "PT": "\U0001F1F5\U0001F1F9",
     "GR": "\U0001F1EC\U0001F1F7",
+    "KR": "\U0001F1F0\U0001F1F7",
+    "NZ": "\U0001F1F3\U0001F1FF",
 }
+
+# Manual prefix -> country fallback
+PREFIX_FALLBACK = [
+    ("92", "PK"),
+    ("44", "GB"),
+    ("91", "IN"),
+    ("880", "BD"),
+    ("62", "ID"),
+    ("60", "MY"),
+    ("65", "SG"),
+    ("852", "HK"),
+    ("90", "TR"),
+    ("48", "PL"),
+    ("380", "UA"),
+    ("40", "RO"),
+    ("31", "NL"),
+    ("32", "BE"),
+    ("41", "CH"),
+    ("43", "AT"),
+    ("46", "SE"),
+    ("47", "NO"),
+    ("45", "DK"),
+    ("358", "FI"),
+    ("353", "IE"),
+    ("351", "PT"),
+    ("30", "GR"),
+    ("27", "ZA"),
+    ("234", "NG"),
+    ("20", "EG"),
+    ("966", "SA"),
+    ("971", "AE"),
+    ("7", "RU"),
+    ("86", "CN"),
+    ("81", "JP"),
+    ("82", "KR"),
+    ("61", "AU"),
+    ("64", "NZ"),
+    ("55", "BR"),
+    ("52", "MX"),
+    ("49", "DE"),
+    ("33", "FR"),
+    ("39", "IT"),
+    ("34", "ES"),
+    ("1", "US"),
+]
 
 
 def escape_html(text):
@@ -274,25 +325,45 @@ def mask_number(number):
 def flag_for_number(value):
     if not value:
         return E_GLOBE
-    try:
-        clean_number = re.sub(r"\D", "", str(value))
-        parsed = phonenumbers.parse(clean_number, None)
-        if phonenumbers.is_valid_number(parsed):
-            region = phonenumbers.region_code_for_number(parsed)
-            return COUNTRY_FLAGS.get(region, E_GLOBE)
-    except Exception:
-        pass
+
+    clean = re.sub(r"\D", "", str(value))
+    if not clean:
+        return E_GLOBE
+
+    for region in (None, "PK", "US", "GB", "IN", "AE", "SA"):
+        try:
+            parsed = phonenumbers.parse(clean, region)
+            if phonenumbers.is_valid_number(parsed):
+                r = phonenumbers.region_code_for_number(parsed)
+                if r and r in COUNTRY_FLAGS:
+                    return COUNTRY_FLAGS[r]
+        except Exception:
+            continue
+
+    for prefix, code in PREFIX_FALLBACK:
+        if clean.startswith(prefix):
+            return COUNTRY_FLAGS.get(code, E_GLOBE)
+
     return E_GLOBE
 
 
 def sms_text(message, masked=True):
+    """
+    Professional SMS card:
+
+        📩 New SMS
+        🇵🇰 923•••4567
+    """
     number = str(message.get("num", ""))
     flag = flag_for_number(number)
     if masked:
         display_number = mask_number(number)
     else:
         display_number = number or "Unknown"
-    return flag + " <code>" + escape_html(display_number) + "</code>"
+
+    result = E_INBOX + " <b>New SMS</b>\n"
+    result += flag + " <code>" + escape_html(display_number) + "</code>"
+    return result
 
 
 def otp_from_message(message_text):
@@ -315,6 +386,13 @@ def otp_from_message(message_text):
 
 
 def message_buttons(message_text, sms_id, fallback=False):
+    """
+    Professional layout:
+
+        [ 📋 Copy OTP: 123456 ]
+        [ 👁 Full Message ]  [ 📢 Channel ]
+        [ 🤖 Open Bot ]
+    """
     otp = otp_from_message(message_text)
     keyboard = []
 
@@ -322,26 +400,25 @@ def message_buttons(message_text, sms_id, fallback=False):
     row1 = []
     if otp != "N/A":
         if fallback:
-            row1.append({"text": E_CLIP + " OTP: " + otp, "callback_data": "otp:" + otp})
+            row1.append({"text": E_CLIP + " Copy OTP: " + otp, "callback_data": "otp:" + otp})
         else:
-            row1.append({"text": E_CLIP + " Copy OTP", "copy_text": {"text": otp}})
+            row1.append({"text": E_CLIP + " Copy OTP: " + otp, "copy_text": {"text": otp}})
     else:
-        row1.append({"text": E_CROSS + " No OTP", "callback_data": "otp:none"})
+        row1.append({"text": E_CROSS + " No OTP Found", "callback_data": "otp:none"})
     keyboard.append(row1)
 
-    # Row 2: Full SMS + Channel
+    # Row 2: Full + Channel
     row2 = []
-    row2.append({"text": E_EYES + " Full SMS", "callback_data": "full:" + sms_id})
-    if TELEGRAM_CHANNEL_URL and TELEGRAM_CHANNEL_URL != "https://t.me/your_channel":
+    row2.append({"text": E_EYES + " Full Message", "callback_data": "full:" + sms_id})
+    if TELEGRAM_CHANNEL_URL:
         row2.append({"text": E_MEGA + " Channel", "url": TELEGRAM_CHANNEL_URL})
     keyboard.append(row2)
 
     # Row 3: Bot
     row3 = []
-    if BOT_USERNAME:
-        clean_username = BOT_USERNAME.lstrip("@")
-        row3.append({"text": E_BOT + " Bot", "url": "https://t.me/" + clean_username})
-        keyboard.append(row3)
+    clean_username = BOT_USERNAME.lstrip("@")
+    row3.append({"text": E_BOT + " Open Bot", "url": "https://t.me/" + clean_username})
+    keyboard.append(row3)
 
     return {"inline_keyboard": keyboard}
 
@@ -628,7 +705,7 @@ async def telegram_updates(offset):
         return []
 
 
-# ============ STATUS TEXT ============
+# ============ STATUS ============
 
 async def status_text(conn, last_error):
     async with conn.execute(
@@ -810,7 +887,7 @@ async def command_loop(forward_event):
                                 pass
                         continue
 
-                    # === Owner private commands only ===
+                    # === Owner private commands ===
                     if chat.get("type") != "private":
                         continue
 
@@ -820,7 +897,7 @@ async def command_loop(forward_event):
                         start_text = E_BOT + " <b>Green SMS Forwarder</b>\n"
                         start_text += DIVIDER + "\n"
                         start_text += E_CHECK + " <b>Online</b>\n\n"
-                        start_text += E_MEGA + " <b>Group:</b> <code>" + escape_html(TELEGRAM_GROUP_ID) + "</code>\n"
+                        start_text += E_MEGA + " <b>Channel:</b> " + escape_html(TELEGRAM_CHANNEL_URL) + "\n"
                         start_text += E_USER + " <b>Owner:</b> <code>" + str(TELEGRAM_OWNER_ID) + "</code>\n\n"
                         start_text += E_KEY + " <b>API Commands</b>\n"
                         start_text += DOT + " /addapi <code>KEY</code>\n"
@@ -831,6 +908,7 @@ async def command_loop(forward_event):
                             "chat_id": chat["id"],
                             "text": start_text,
                             "parse_mode": "HTML",
+                            "disable_web_page_preview": True,
                         })
 
                     elif cmd == "/help":
@@ -1012,7 +1090,7 @@ async def main():
 
     print("=" * 60)
     print("Green SMS -> Telegram Forwarder")
-    print("v8 - Final Pro UI")
+    print("v10 - Final Pro")
     print("=" * 60)
 
     forward_event = asyncio.Event()
@@ -1029,6 +1107,7 @@ async def main():
 
         logger.info("Bot: @" + BOT_USERNAME)
         logger.info("Group: " + TELEGRAM_GROUP_ID)
+        logger.info("Channel: " + TELEGRAM_CHANNEL_URL)
         logger.info("Owner: " + str(TELEGRAM_OWNER_ID))
         logger.info("Last DT: " + (last_dt or "None"))
         logger.info("Poll: " + str(POLL_SECONDS) + "s | Batch: " + str(MAX_RECORDS))
