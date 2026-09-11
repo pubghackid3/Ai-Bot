@@ -621,4 +621,361 @@ async def forward_loop(forward_event):
                 last_dt = await state_value(conn, "last_sms_dt")
 
                 logger.info("-" * 50)
-                logger.info("Poll @ " + runtime
+                logger.info("Poll @ " + runtime_last_poll)
+                logger.info("Last DT: " + (last_dt or "None"))
+
+                messages = await fetch_all_messages(last_dt)
+
+                if not messages:
+                    logger.info("No new SMS")
+                else:
+                    logger.info("Processing " + str(len(messages)) + " messages")
+
+                    for message in messages:
+                        sms_id = generate_sms_id(message)
+
+                        claimed = await claim_message(conn, sms_id)
+                        if not claimed:
+                            continue
+
+                        raw_num = str(message.get("num", ""))
+                        cli = str(message.get("cli", ""))
+                        msg_text = str(message.get("message", ""))
+                        payout = str(message.get("payout", "0"))
+                        dt = str(message.get("dt", ""))
+
+                        await save_message_data(conn, sms_id, raw_num, cli, msg_text, payout, dt)
+
+                        display_text = sms_text(message, masked=True)
+                        markup = message_buttons(msg_text, sms_id)
+
+                        await send_group_message(display_text, markup)
+                        await mark_sent(conn, sms_id)
+
+                        if dt:
+                            await set_state(conn, "last_sms_dt", dt)
+
+                        logger.info("Sent " + sms_id[:40])
+                        await asyncio.sleep(0.5)
+
+                last_error = None
+                runtime_last_error = None
+
+            except Exception as error:
+                last_error = str(error)
+                runtime_last_error = last_error
+                logger.error("Forward error: " + last_error)
+
+            try:
+                await asyncio.wait_for(forward_event.wait(), timeout=POLL_SECONDS)
+                forward_event.clear()
+                logger.info("Manual trigger")
+            except asyncio.TimeoutError:
+                pass
+    finally:
+        await conn.close()
+
+
+async def command_loop(forward_event):
+    conn = await init_db()
+    offset = int(await state_value(conn, "telegram_update_offset") or "0")
+
+    try:
+        while True:
+            try:
+                updates = await telegram_updates(offset)
+                for update in updates:
+                    update_id = int(update.get("update_id", 0))
+                    offset = max(offset, update_id + 1)
+                    await set_state(conn, "telegram_update_offset", str(offset))
+
+                    message = update.get("message", {})
+                    chat = message.get("chat", {})
+                    callback = update.get("callback_query")
+
+                    if callback:
+                        sender = callback.get("from", {})
+                    else:
+                        sender = message.get("from", {})
+
+                    text = str(message.get("text", ""))
+
+                    if sender.get("id") != TELEGRAM_OWNER_ID:
+                        continue
+
+                    if callback:
+                        data = str(callback.get("data", ""))
+                        callback_id = callback.get("id", "")
+                        if not callback_id:
+                            continue
+
+                        if data.startswith("full:"):
+                            sms_id = data.split(":", 1)[1]
+                            msg_data = await get_message_data(conn, sms_id)
+                            if msg_data:
+                                alert = "Msg: " + msg_data["message_text"]
+                                alert = alert[:200]
+                            else:
+                                alert = "Message expired."
+                            try:
+                                await telegram_call("answerCallbackQuery", {
+                                    "callback_query_id": callback_id,
+                                    "text": alert,
+                                    "show_alert": True,
+                                })
+                            except Exception as e:
+                                logger.warning("Callback: " + str(e))
+
+                        elif data.startswith("otp:"):
+                            otp = data.split(":", 1)[1]
+                            if otp == "none":
+                                alert = "No OTP found in this message."
+                            else:
+                                alert = "OTP: " + otp
+                            try:
+                                await telegram_call("answerCallbackQuery", {
+                                    "callback_query_id": callback_id,
+                                    "text": alert,
+                                    "show_alert": True,
+                                })
+                            except Exception:
+                                pass
+                        continue
+
+                    if chat.get("type") != "private":
+                        continue
+
+                    cmd = text.strip().split(maxsplit=1)[0].split("@")[0].lower()
+
+                    if cmd == "/start":
+                        start_text = "Green SMS Forwarder\n"
+                        start_text += "--------------------\n"
+                        start_text += "Online\n\n"
+                        start_text += "Group: " + escape_html(TELEGRAM_GROUP_ID) + "\n"
+                        start_text += "Owner: " + str(TELEGRAM_OWNER_ID) + "\n\n"
+                        start_text += "API Commands:\n"
+                        start_text += "/addapi KEY\n"
+                        start_text += "/remapi KEY\n"
+                        start_text += "/apilist\n\n"
+                        start_text += "/help - all commands"
+                        await telegram_call("sendMessage", {
+                            "chat_id": chat["id"],
+                            "text": start_text,
+                            "parse_mode": "HTML",
+                        })
+
+                    elif cmd == "/help":
+                        help_text = "Commands\n"
+                        help_text += "--------------------\n"
+                        help_text += "Control:\n"
+                        help_text += "/start\n"
+                        help_text += "/status\n"
+                        help_text += "/stats\n"
+                        help_text += "/reset\n"
+                        help_text += "/forwardnow\n"
+                        help_text += "/cleanup\n\n"
+                        help_text += "API:\n"
+                        help_text += "/addapi KEY\n"
+                        help_text += "/remapi KEY\n"
+                        help_text += "/apilist"
+                        await telegram_call("sendMessage", {
+                            "chat_id": chat["id"],
+                            "text": help_text,
+                            "parse_mode": "HTML",
+                        })
+
+                    elif cmd == "/status":
+                        st = await status_text(conn, runtime_last_error)
+                        await telegram_call("sendMessage", {
+                            "chat_id": chat["id"],
+                            "text": st,
+                            "parse_mode": "HTML",
+                        })
+
+                    elif cmd == "/reset":
+                        await set_state(conn, "last_sms_dt", "")
+                        await telegram_call("sendMessage", {
+                            "chat_id": chat["id"],
+                            "text": "Reset done. Bot will re-fetch all.",
+                        })
+
+                    elif cmd == "/stats":
+                        async with conn.execute(
+                            "SELECT COUNT(*) FROM forwarded_messages WHERE sent_at IS NOT NULL"
+                        ) as c:
+                            row = await c.fetchone()
+                            total = row[0]
+                        async with conn.execute(
+                            "SELECT COUNT(*) FROM forwarded_messages WHERE sent_at IS NULL"
+                        ) as c:
+                            row = await c.fetchone()
+                            pending = row[0]
+                        async with conn.execute(
+                            "SELECT COUNT(*) FROM forwarded_messages"
+                        ) as c:
+                            row = await c.fetchone()
+                            all_recs = row[0]
+
+                        stats_text = "Statistics\n"
+                        stats_text += "--------------------\n"
+                        stats_text += "Sent: " + str(total) + "\n"
+                        stats_text += "Pending: " + str(pending) + "\n"
+                        stats_text += "Records: " + str(all_recs) + "\n"
+                        stats_text += "File: " + escape_html(DATABASE_FILE)
+                        await telegram_call("sendMessage", {
+                            "chat_id": chat["id"],
+                            "text": stats_text,
+                            "parse_mode": "HTML",
+                        })
+
+                    elif cmd == "/forwardnow":
+                        await telegram_call("sendMessage", {
+                            "chat_id": chat["id"],
+                            "text": "Triggered.",
+                        })
+                        forward_event.set()
+
+                    elif cmd == "/cleanup":
+                        deleted = await cleanup_old_records(conn, CLEANUP_DAYS)
+                        await telegram_call("sendMessage", {
+                            "chat_id": chat["id"],
+                            "text": "Cleaned: " + str(deleted) + " records (> " + str(CLEANUP_DAYS) + "d)",
+                        })
+
+                    elif cmd == "/addapi":
+                        parts = text.strip().split()
+                        if len(parts) < 2:
+                            await telegram_call("sendMessage", {
+                                "chat_id": chat["id"],
+                                "text": "Usage: /addapi YOUR_KEY",
+                            })
+                            continue
+                        api_key = parts[1]
+                        added = await add_api_key(conn, api_key)
+                        if added:
+                            await load_api_keys(conn)
+                            await telegram_call("sendMessage", {
+                                "chat_id": chat["id"],
+                                "text": "API Added: " + escape_html(api_key[:20]) + "...",
+                                "parse_mode": "HTML",
+                            })
+                        else:
+                            await telegram_call("sendMessage", {
+                                "chat_id": chat["id"],
+                                "text": "API key already exists.",
+                            })
+
+                    elif cmd == "/remapi":
+                        parts = text.strip().split()
+                        if len(parts) < 2:
+                            await telegram_call("sendMessage", {
+                                "chat_id": chat["id"],
+                                "text": "Usage: /remapi YOUR_KEY",
+                            })
+                            continue
+                        api_key = parts[1]
+                        removed = await remove_api_key(conn, api_key)
+                        if removed:
+                            await load_api_keys(conn)
+                            await telegram_call("sendMessage", {
+                                "chat_id": chat["id"],
+                                "text": "API Removed: " + escape_html(api_key[:20]) + "...",
+                                "parse_mode": "HTML",
+                            })
+                        else:
+                            await telegram_call("sendMessage", {
+                                "chat_id": chat["id"],
+                                "text": "API key not found.",
+                            })
+
+                    elif cmd == "/apilist":
+                        keys = await get_all_api_keys(conn)
+                        if not keys:
+                            await telegram_call("sendMessage", {
+                                "chat_id": chat["id"],
+                                "text": "No API keys stored.",
+                            })
+                            continue
+
+                        current_key = get_current_api_key()
+                        list_text = "API Keys\n"
+                        list_text += "--------------------\n"
+                        for k in keys:
+                            if k["api_key"] == current_key:
+                                mark = "[ACTIVE] "
+                            else:
+                                mark = "[STANDBY] "
+                            list_text += mark + escape_html(k["api_key"][:20]) + "...\n"
+
+                        await telegram_call("sendMessage", {
+                            "chat_id": chat["id"],
+                            "text": list_text,
+                            "parse_mode": "HTML",
+                        })
+
+            except Exception as error:
+                logger.error("Command error: " + str(error))
+
+            await asyncio.sleep(1)
+    finally:
+        await conn.close()
+
+
+async def load_bot_username():
+    global BOT_USERNAME
+    try:
+        response = await telegram_call("getMe", {})
+        if response.get("ok"):
+            BOT_USERNAME = response["result"]["username"]
+            logger.info("Bot: @" + BOT_USERNAME)
+    except Exception as e:
+        logger.error("getMe failed: " + str(e))
+
+
+async def main():
+    global http_client
+
+    print("=" * 60)
+    print("Green SMS -> Telegram Forwarder")
+    print("v7 - Paste-Safe")
+    print("=" * 60)
+
+    forward_event = asyncio.Event()
+    http_client = httpx.AsyncClient(
+        http2=False,
+        limits=httpx.Limits(max_connections=10),
+    )
+
+    conn = await init_db()
+    try:
+        await load_api_keys(conn)
+        await load_bot_username()
+        last_dt = await state_value(conn, "last_sms_dt")
+
+        logger.info("Bot: @" + BOT_USERNAME)
+        logger.info("Group: " + TELEGRAM_GROUP_ID)
+        logger.info("Owner: " + str(TELEGRAM_OWNER_ID))
+        logger.info("Last DT: " + (last_dt or "None"))
+        logger.info("Poll: " + str(POLL_SECONDS) + "s | Batch: " + str(MAX_RECORDS))
+        logger.info("APIs: " + str(len(api_keys)))
+        logger.info("=" * 60)
+        logger.info("Started")
+        logger.info("=" * 60)
+
+        await asyncio.gather(
+            forward_loop(forward_event),
+            command_loop(forward_event),
+        )
+
+    except KeyboardInterrupt:
+        logger.info("Stopped")
+    except Exception as e:
+        logger.error("Fatal: " + str(e))
+    finally:
+        await conn.close()
+        if http_client:
+            await http_client.aclose()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
