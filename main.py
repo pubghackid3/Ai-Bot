@@ -17,8 +17,8 @@ import phonenumbers
 # ═══════════════════════════════════════════════════════
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════
-GREEN_SMS_API = "http://143.110.245.86/api/partner/v1/messages/"
-GREEN_SMS_API_KEY = "gsp_5735fa94_Ufmcr2_GNpht0AqpKZLK5Lt6MQxBavnavSUwx3zw-hs"
+GREEN_SMS_API = "http://147.135.212.197/crapi/had/viewstats"
+GREEN_SMS_API_KEY = "Qk5VR0RBUzRUVoF8V2F4Z4uTill6bWuKR4uTRENpYoBWblF7ZZVyQQ=="
 TELEGRAM_GROUP_ID = "-1004330079864"
 TELEGRAM_OWNER_ID = 8762845215
 TELEGRAM_CHANNEL_URL = "https://t.me/RN_OTP_1"
