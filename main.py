@@ -1,6 +1,11 @@
-"""Ultra SMS Forwarder Bot v17 - Premium Edition (FINAL)
-Owner-only commands | Group members full access to buttons
-Beautiful animated cards | Country flags | SIM + App detection
+"""Ultra SMS Forwarder Bot v18 - Final Premium Edition
+Features:
+  • Owner-only commands | Public buttons for group members
+  • Beautiful animated message cards
+  • Country flags + SIM operator + App detection
+  • Smart OTP with confidence score
+  • Analytics, Intruder log, Block system, CSV export
+  • Fixed loop (no repeat), 409 handling
 """
 
 from __future__ import annotations
@@ -58,7 +63,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger("greensms_bot")
 
 # ═══════════════════════════════════════════════════════
-# EMOJI & DESIGN
+# EMOJI & DESIGN CONSTANTS
 # ═══════════════════════════════════════════════════════
 E_BELL = "\U0001F514"
 E_CLIP = "\U0001F4CB"
@@ -85,10 +90,6 @@ E_FILE = "\U0001F4C1"
 E_DB = "\U0001F5C4"
 E_BOLT = "\u26A1"
 E_GLOBE = "\U0001F310"
-E_INBOX = "\U0001F4E9"
-E_STAR = "\u2B50"
-E_SHIELD = "\U0001F6E1"
-E_WARN = "\u26A0"
 E_SPARKLE = "\u2728"
 E_DIAMOND = "\U0001F48E"
 E_CROWN = "\U0001F451"
@@ -96,7 +97,14 @@ E_TAG = "\U0001F3F7"
 E_SCROLL = "\U0001F4DC"
 E_PHONE = "\U0001F4DE"
 E_SIGNAL = "\U0001F4F6"
+E_SHIELD = "\U0001F6E1"
+E_CAL = "\U0001F4C5"
+E_LOCK = "\U0001F510"
+E_STAR = "\u2B50"
 E_FIRE = "\U0001F525"
+E_INBOX = "\U0001F4E9"
+E_BOX = "\U0001F4E6"
+E_MAGIC = "\U0001FA84"
 
 DIVIDER = "\u2501" * 16
 DIV_SHORT = "\u2501" * 10
@@ -170,26 +178,26 @@ PREFIX_FALLBACK = [
 ]
 
 APP_LOGOS = {
-    "whatsapp":  "\U0001F4F1", "telegram":  "\u2708\uFE0F",
-    "instagram": "\U0001F4F8", "facebook":  "\U0001F535",
-    "twitter":   "\U0001F426", "tiktok":    "\U0001F3B5",
-    "snapchat":  "\U0001F47B", "discord":   "\U0001F3AE",
-    "youtube":   "\U0001F4FA", "linkedin":  "\U0001F4BC",
-    "google":    "\U0001F50D", "gmail":     "\U0001F4E7",
-    "microsoft": "\U0001F7EA", "apple":     "\U0001F34E",
-    "amazon":    "\U0001F4E6", "netflix":   "\U0001F3AC",
-    "paypal":    "\U0001F4B3", "binance":   "\U0001F4B0",
-    "coinbase":  "\U0001FA99", "uber":      "\U0001F697",
-    "airbnb":    "\U0001F3E0", "reddit":    "\U0001F47D",
-    "pinterest": "\U0001F4CC", "skype":     "\u260E\uFE0F",
-    "zoom":      "\U0001F3A5", "signal":    "\U0001F512",
-    "viber":     "\U0001F4DE", "line":      "\U0001F4AC",
-    "wechat":    "\U0001F49A", "imo":       "\U0001F4F2",
-    "truecaller":"\U0001F4DE", "bank":      "\U0001F3E6",
-    "hdfc":      "\U0001F3E6", "icici":     "\U0001F3E6",
-    "sbi":       "\U0001F3E6", "paytm":     "\U0001F4B8",
-    "phonepe":   "\U0001F4B8", "gpay":      "\U0001F4B8",
-    "default":   "\U0001F4E9",
+    "whatsapp": "\U0001F4F1", "telegram": "\u2708\uFE0F",
+    "instagram": "\U0001F4F8", "facebook": "\U0001F535",
+    "twitter": "\U0001F426", "tiktok": "\U0001F3B5",
+    "snapchat": "\U0001F47B", "discord": "\U0001F3AE",
+    "youtube": "\U0001F4FA", "linkedin": "\U0001F4BC",
+    "google": "\U0001F50D", "gmail": "\U0001F4E7",
+    "microsoft": "\U0001F7EA", "apple": "\U0001F34E",
+    "amazon": "\U0001F4E6", "netflix": "\U0001F3AC",
+    "paypal": "\U0001F4B3", "binance": "\U0001F4B0",
+    "coinbase": "\U0001FA99", "uber": "\U0001F697",
+    "airbnb": "\U0001F3E0", "reddit": "\U0001F47D",
+    "pinterest": "\U0001F4CC", "skype": "\u260E\uFE0F",
+    "zoom": "\U0001F3A5", "signal": "\U0001F512",
+    "viber": "\U0001F4DE", "line": "\U0001F4AC",
+    "wechat": "\U0001F49A", "imo": "\U0001F4F2",
+    "truecaller": "\U0001F4DE", "bank": "\U0001F3E6",
+    "hdfc": "\U0001F3E6", "icici": "\U0001F3E6",
+    "sbi": "\U0001F3E6", "paytm": "\U0001F4B8",
+    "phonepe": "\U0001F4B8", "gpay": "\U0001F4B8",
+    "default": "\U0001F4E9",
 }
 
 APP_KEYWORDS = [
@@ -222,7 +230,7 @@ APP_KEYWORDS = [
     ("line",      ["line app", "line code"]),
     ("wechat",    ["wechat", "we chat"]),
     ("imo",       ["imo app", "imo code"]),
-    ("truecaller",["truecaller"]),
+    ("truecaller", ["truecaller"]),
     ("paytm",     ["paytm"]),
     ("phonepe",   ["phonepe", "phone pe"]),
     ("gpay",      ["google pay", "gpay"]),
@@ -454,9 +462,7 @@ def sms_text(message, masked=True):
     if otp != "N/A":
         conf_icon = E_GREEN if confidence == "HIGH" else (E_YELLOW if confidence == "MEDIUM" else E_RED)
         lines.append(DIV_SHORT)
-        lines.append(
-            E_KEY + " <b>" + otp_cat + " :</b>  <code>" + escape_html(otp) + "</code>  " + conf_icon
-        )
+        lines.append(E_KEY + " <b>" + otp_cat + " :</b>  <code>" + escape_html(otp) + "</code>  " + conf_icon)
         lines.append(DIV_SHORT)
 
     num_line = E_BOLT + " <code>" + escape_html(display_number) + "</code>"
@@ -521,15 +527,17 @@ def build_full_message_alert(message_text, otp="N/A", app_name="unknown",
     app_logo = APP_LOGOS.get(app_name, APP_LOGOS["default"])
     rel = relative_time(dt) if dt else ""
 
-    lines = [
-        E_SCROLL + " <b>FULL MESSAGE</b> " + E_SCROLL,
-        DIVIDER,
-    ]
+    lines = []
+    lines.append(E_SCROLL + " <b>FULL MESSAGE</b> " + E_SCROLL)
+    lines.append(DIVIDER)
+
     if app_name != "unknown":
         lines.append(app_logo + " <b>" + app_name.upper() + "</b>")
     else:
         lines.append(E_MSG + " <b>SMS</b>")
+
     lines.append(flag + " " + name + "  " + DOT + "  " + E_PHONE + " <code>" + escape_html(number) + "</code>")
+
     if rel:
         lines.append(E_CLOCK + " " + rel + "  " + DOT + "  " + E_TIME + " " + pkt_time() + " PKT")
 
@@ -861,7 +869,7 @@ async def fetch_all_messages(since_dt=""):
 
 
 # ═══════════════════════════════════════════════════════
-# TELEGRAM
+# TELEGRAM HELPERS
 # ═══════════════════════════════════════════════════════
 
 async def telegram_call(method, payload, retries=3):
@@ -943,7 +951,7 @@ async def telegram_updates(offset):
     try:
         response = await http_client.get(url, params=params, timeout=35)
         if response.status_code == 409:
-            logger.warning("409 Conflict: doosra bot instance chal raha hai. 30s wait...")
+            logger.warning("409 Conflict: doosra instance chal raha hai. 30s wait...")
             await asyncio.sleep(30)
             return []
         if not response.is_success:
@@ -976,7 +984,7 @@ async def get_full_message_alert(conn, sms_id):
 
 
 # ═══════════════════════════════════════════════════════
-# SECURITY (Intruder log + Block)
+# SECURITY (Intruder + Block)
 # ═══════════════════════════════════════════════════════
 
 async def load_blocked_users(conn):
@@ -1002,14 +1010,15 @@ async def log_intruder(conn, user_id, username, first_name, action):
 
 async def notify_owner_intrusion(conn, user_id, username, first_name, action):
     try:
-        text = (
-            "\U0001F6A8 <b>UNAUTHORIZED ATTEMPT</b>\n" + DIV_SHORT + "\n"
-            "\U0001F464 <b>ID:</b> <code>" + str(user_id) + "</code>\n"
-            "\U0001F4DB <b>User:</b> @" + escape_html(username or "N/A") + "\n"
-            "\U0001F3F7 <b>Name:</b> " + escape_html(first_name or "N/A") + "\n"
-            "\u26A1 <b>Action:</b> <code>" + escape_html(action) + "</code>\n"
-            "\U0001F550 <b>Time:</b> " + pkt_time() + " PKT"
-        )
+        text = "\n".join([
+            "\U0001F6A8 <b>UNAUTHORIZED ATTEMPT</b>",
+            DIV_SHORT,
+            E_USER + " <b>ID:</b> <code>" + str(user_id) + "</code>",
+            "\U0001F4DB <b>User:</b> @" + escape_html(username or "N/A"),
+            E_TAG + " <b>Name:</b> " + escape_html(first_name or "N/A"),
+            E_BOLT + " <b>Action:</b> <code>" + escape_html(action) + "</code>",
+            E_CLOCK + " <b>Time:</b> " + pkt_time() + " PKT",
+        ])
         await telegram_call("sendMessage", {
             "chat_id": TELEGRAM_OWNER_ID, "text": text, "parse_mode": "HTML",
         })
@@ -1154,7 +1163,7 @@ async def forward_loop(forward_event: asyncio.Event) -> None:
 
 
 # ═══════════════════════════════════════════════════════
-# COMMAND LOOP (Owner-only commands, public buttons)
+# COMMAND LOOP
 # ═══════════════════════════════════════════════════════
 
 async def command_loop(forward_event: asyncio.Event) -> None:
@@ -1179,13 +1188,10 @@ async def command_loop(forward_event: asyncio.Event) -> None:
                     sender_id = sender.get("id")
                     text = str(message.get("text", ""))
 
-                    # ═══ BLOCKED: silent ignore ═══
                     if str(sender_id) in blocked_users:
                         continue
 
-                    # ═══════════════════════════════════════════
-                    # BUTTONS — accessible by EVERYONE (group members)
-                    # ═══════════════════════════════════════════
+                    # ═══ BUTTONS — EVERYONE ═══
                     if callback:
                         data = str(callback.get("data", ""))
                         callback_id = callback.get("id", "")
@@ -1219,11 +1225,8 @@ async def command_loop(forward_event: asyncio.Event) -> None:
                                 pass
                         continue
 
-                    # ═══════════════════════════════════════════
-                    # COMMANDS — OWNER ONLY
-                    # ═══════════════════════════════════════════
+                    # ═══ COMMANDS — OWNER ONLY ═══
                     if not is_owner(sender_id):
-                        # Log + notify (rate-limited 60s)
                         action = "cmd:" + text[:40]
                         await log_intruder(
                             conn, sender_id,
@@ -1253,39 +1256,43 @@ async def command_loop(forward_event: asyncio.Event) -> None:
                             )
                         continue
 
-                    # ═══ OWNER — private chat only ═══
                     if chat.get("type") != "private":
                         continue
 
                     cmd = text.strip().split(maxsplit=1)[0].split("@")[0].lower()
 
                     if cmd == "/start":
+                        start_lines = [
+                            E_CROWN + " <b>Owner Panel</b>",
+                            DIVIDER,
+                            E_BOT + " <b>SMS Forwarder Bot v18</b>",
+                            E_GREEN + " <b>Status:</b> Online & Secured",
+                            "",
+                            E_USER + " <b>Owner:</b> <code>" + str(TELEGRAM_OWNER_ID) + "</code>",
+                            E_MEGA + " <b>Group:</b> <code>" + escape_html(TELEGRAM_GROUP_ID) + "</code>",
+                            E_CLOCK + " <b>PKT:</b> " + pkt_time(),
+                            "",
+                            E_KEY + " <b>Commands</b>",
+                            "\u2022 /status \u2014 Bot status",
+                            "\u2022 /stats \u2014 Statistics",
+                            "\u2022 /analytics \u2014 Deep insights",
+                            "\u2022 /export \u2014 CSV export",
+                            "\u2022 /reset \u2014 Reset cursor",
+                            "\u2022 /forwardnow \u2014 Force poll",
+                            "\u2022 /cleanup \u2014 Delete old",
+                            "\u2022 /addapi KEY \u2014 Add API",
+                            "\u2022 /remapi KEY \u2014 Remove API",
+                            "\u2022 /apilist \u2014 List APIs",
+                            "",
+                            E_SHIELD + " <b>Security</b>",
+                            "\u2022 /intruders \u2014 Access attempts",
+                            "\u2022 /blocked \u2014 Blocked list",
+                            "\u2022 /block ID \u2014 Block user",
+                            "\u2022 /unblock ID \u2014 Unblock",
+                        ]
                         await telegram_call("sendMessage", {
                             "chat_id": chat["id"],
-                            "text": (
-                                E_CROWN + " <b>Owner Panel</b>\n" + DIVIDER + "\n"
-                                E_BOT + " <b>SMS Forwarder Bot v17</b>\n"
-                                E_GREEN + " <b>Status:</b> Online & Secured\n\n"
-                                E_USER + " <b>Owner:</b> <code>" + str(TELEGRAM_OWNER_ID) + "</code>\n"
-                                E_MEGA + " <b>Group:</b> <code>" + escape_html(TELEGRAM_GROUP_ID) + "</code>\n"
-                                E_CLOCK + " <b>PKT:</b> " + pkt_time() + "\n\n"
-                                E_KEY + " <b>Commands</b>\n"
-                                "\u2022 /status \u2014 Bot status\n"
-                                "\u2022 /stats \u2014 Statistics\n"
-                                "\u2022 /analytics \u2014 Deep insights\n"
-                                "\u2022 /export \u2014 CSV export\n"
-                                "\u2022 /reset \u2014 Reset cursor\n"
-                                "\u2022 /forwardnow \u2014 Force poll\n"
-                                "\u2022 /cleanup \u2014 Delete old\n"
-                                "\u2022 /addapi KEY \u2014 Add API\n"
-                                "\u2022 /remapi KEY \u2014 Remove API\n"
-                                "\u2022 /apilist \u2014 List APIs\n\n"
-                                E_SHIELD + " <b>Security</b>\n"
-                                "\u2022 /intruders \u2014 Access attempts\n"
-                                "\u2022 /blocked \u2014 Blocked list\n"
-                                "\u2022 /block ID \u2014 Block user\n"
-                                "\u2022 /unblock ID \u2014 Unblock"
-                            ),
+                            "text": "\n".join(start_lines),
                             "parse_mode": "HTML",
                         })
 
@@ -1394,11 +1401,9 @@ async def command_loop(forward_event: asyncio.Event) -> None:
                         else:
                             lines = ["\U0001F6A8 <b>Recent Intruders</b>", DIV_SHORT]
                             for r in rows[:15]:
-                                lines.append(
-                                    E_USER + " <code>" + str(r["user_id"]) + "</code>\n"
-                                    "   @" + escape_html(r.get("username") or "N/A") + "\n"
-                                    "   \u26A1 <code>" + escape_html(str(r.get("action"))[:40]) + "</code>"
-                                )
+                                lines.append(E_USER + " <code>" + str(r["user_id"]) + "</code>")
+                                lines.append("   @" + escape_html(r.get("username") or "N/A"))
+                                lines.append("   \u26A1 <code>" + escape_html(str(r.get("action"))[:40]) + "</code>")
                             txt = "\n".join(lines)
                         await telegram_call("sendMessage", {
                             "chat_id": chat["id"], "text": txt, "parse_mode": "HTML",
@@ -1472,7 +1477,7 @@ async def build_status_text(conn, last_error):
     except Exception:
         pass
 
-    return "\n".join([
+    lines = [
         E_CHART + " <b>Bot Status</b>",
         DIVIDER,
         state_icon + " <b>State:</b> " + state_label,
@@ -1485,7 +1490,8 @@ async def build_status_text(conn, last_error):
         E_USER + " <b>Owner:</b> <code>" + str(TELEGRAM_OWNER_ID) + "</code>",
         E_CLOCK + " <b>Now:</b> " + now_label + " PKT",
         E_CROSS + " <b>Error:</b> <code>" + escape_html(err_label) + "</code>",
-    ])
+    ]
+    return "\n".join(lines)
 
 
 async def build_stats_text(conn):
@@ -1635,7 +1641,7 @@ async def main() -> None:
     global http_client
 
     print("=" * 60)
-    print("Ultra SMS -> Telegram Forwarder Bot v17 - Premium")
+    print("Ultra SMS -> Telegram Forwarder Bot v18 - Final Premium")
     print("=" * 60)
 
     forward_event = asyncio.Event()
@@ -1657,19 +1663,21 @@ async def main() -> None:
         logger.info("Last DT: " + (last_dt or "None"))
         logger.info("APIs: " + str(len(api_keys)))
         logger.info("=" * 60)
-        logger.info("Started - Owner-Only Commands, Public Buttons")
+        logger.info("Started - Owner Commands | Public Buttons")
         logger.info("=" * 60)
 
         try:
+            startup_lines = [
+                E_CROWN + " <b>Bot Started</b>",
+                DIV_SHORT,
+                E_GREEN + " <b>Status:</b> Online",
+                E_LOCK + " <b>Mode:</b> Owner-Only Commands",
+                E_MEGA + " <b>Group:</b> Buttons public",
+                E_CLOCK + " <b>PKT:</b> " + pkt_time(),
+            ]
             await telegram_call("sendMessage", {
                 "chat_id": TELEGRAM_OWNER_ID,
-                "text": (
-                    E_CROWN + " <b>Bot Started</b>\n" + DIV_SHORT + "\n"
-                    E_GREEN + " <b>Status:</b> Online\n"
-                    "\U0001F510 <b>Mode:</b> Owner-Only Commands\n"
-                    E_MEGA + " <b>Group:</b> Buttons public\n"
-                    E_CLOCK + " <b>PKT:</b> " + pkt_time()
-                ),
+                "text": "\n".join(startup_lines),
                 "parse_mode": "HTML",
             })
         except Exception as e:
