@@ -1,14 +1,18 @@
-"""Ultra SMS Forwarder Bot v13 - Smart OTP + App Detection + Animation"""
+"""Ultra SMS Forwarder Bot v17 - Premium Edition (FINAL)
+Owner-only commands | Group members full access to buttons
+Beautiful animated cards | Country flags | SIM + App detection
+"""
 
 from __future__ import annotations
 
 import asyncio
+import csv
 import hashlib
+import io
 import logging
 import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from typing import Any
 
 import aiosqlite
 import httpx
@@ -18,13 +22,13 @@ import phonenumbers
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════
 GREEN_SMS_API = "http://147.135.212.197/crapi/had/viewstats"
-GREEN_SMS_API_KEY = "Qk5VR0RBUzRUVoF8V2F4Z4uTill6bWuKR4uTRENpYoBWblF7ZZVyQQ=="
+GREEN_SMS_API_KEY = "Qk5VR0RBUzRndWVCgG6Bfnp0d3RHbpNTVGCFQ2NpmHtfblVrhJZTig=="
 TELEGRAM_GROUP_ID = "-1004330079864"
 TELEGRAM_OWNER_ID = 8762845215
 TELEGRAM_CHANNEL_URL = "https://t.me/RN_OTP_1"
-BOT_USERNAME = "RN_OTP_bot"
+BOT_USERNAME = "RN_OTP_PROVIDER_BOT"
 BUTTON_BOT_USERNAME = "RN_OTP1_bot"
-BOT_TOKEN = "8354696843:AAEq3AUqSUSBToIf_tWA9UdtsMOjVMSTc-E"
+BOT_TOKEN = "8683238433:AAFfJx-3ZT-Qrll-vZxq0toogD9_skFsxv4"
 
 POLL_SECONDS = 5
 DATABASE_FILE = "sms_telegram_bot.sqlite3"
@@ -32,24 +36,31 @@ MAX_RECORDS = 200
 MAX_BATCHES = 100
 CLEANUP_DAYS = 30
 ANIMATION_ENABLED = True
-# ========================================
+PKT_OFFSET_HOURS = 5
+
+# ═══════════════════════════════════════════════════════
 
 runtime_last_error = None
 runtime_last_poll = None
 http_client = None
 current_api_index = 0
 api_keys = []
+blocked_users = set()
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(message)s",
     datefmt="%H:%M:%S",
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 logger = logging.getLogger("greensms_bot")
 
 # ═══════════════════════════════════════════════════════
-# EMOJI CONSTANTS
+# EMOJI & DESIGN
 # ═══════════════════════════════════════════════════════
+E_BELL = "\U0001F514"
 E_CLIP = "\U0001F4CB"
 E_EYES = "\U0001F440"
 E_MEGA = "\U0001F4E2"
@@ -58,79 +69,129 @@ E_CROSS = "\u274C"
 E_CHECK = "\u2705"
 E_GREEN = "\U0001F7E2"
 E_RED = "\U0001F534"
+E_YELLOW = "\U0001F7E1"
+E_BLUE = "\U0001F535"
 E_KEY = "\U0001F511"
+E_OLDKEY = "\U0001F5DD"
 E_CHART = "\U0001F4CA"
-E_CAL = "\U0001F4C5"
 E_OUT = "\U0001F4E4"
 E_HOUR = "\u23F3"
 E_USER = "\U0001F464"
 E_CLOCK = "\U0001F550"
+E_TIME = "\U0001F552"
 E_MSG = "\U0001F4AC"
 E_ROCKET = "\U0001F680"
-E_GEAR = "\u2699"
 E_FILE = "\U0001F4C1"
 E_DB = "\U0001F5C4"
 E_BOLT = "\u26A1"
 E_GLOBE = "\U0001F310"
-E_INFO = "\u2139"
 E_INBOX = "\U0001F4E9"
-E_FIRE = "\U0001F525"
 E_STAR = "\u2B50"
-E_LOCK = "\U0001F512"
+E_SHIELD = "\U0001F6E1"
+E_WARN = "\u26A0"
+E_SPARKLE = "\u2728"
+E_DIAMOND = "\U0001F48E"
+E_CROWN = "\U0001F451"
+E_TAG = "\U0001F3F7"
+E_SCROLL = "\U0001F4DC"
+E_PHONE = "\U0001F4DE"
+E_SIGNAL = "\U0001F4F6"
+E_FIRE = "\U0001F525"
 
-# Animation frames
-FRAMES = ["\u25B0", "\u25B1", "\u25B2", "\u25B3", "\u25B4", "\u25B5", "\u25B6", "\u25B7"]
-PROGRESS_BLOCKS = ["\u2596", "\u2597", "\u2598", "\u259D", "\u2599", "\u259F", "\u259A", "\u259C"]
-
-DIVIDER = "\u2501" * 14
+DIVIDER = "\u2501" * 16
+DIV_SHORT = "\u2501" * 10
 DOT = "\u2022"
 
 # ═══════════════════════════════════════════════════════
-# APP LOGOS & DETECTION
+# COUNTRY DATA
 # ═══════════════════════════════════════════════════════
-APP_LOGOS = {
-    "whatsapp":  "\U0001F4F1",        # 📱
-    "telegram":  "\u2708\uFE0F",       # ✈️
-    "instagram": "\U0001F4F8",        # 📸
-    "facebook":  "\U0001F535",        # 🔵
-    "twitter":   "\U0001F426",        # 🐦
-    "tiktok":    "\U0001F3B5",        # 🎵
-    "snapchat":  "\U0001F47B",        # 👻
-    "discord":   "\U0001F3AE",        # 🎮
-    "youtube":   "\U0001F4FA",        # 📺
-    "linkedin":  "\U0001F4BC",        # 💼
-    "google":    "\U0001F50D",        # 🔍
-    "gmail":     "\U0001F4E7",        # 📧
-    "microsoft": "\U0001F7EA",        # 🟪
-    "apple":     "\U0001F34E",        # 🍎
-    "amazon":    "\U0001F4E6",        # 📦
-    "netflix":   "\U0001F3AC",        # 🎬
-    "paypal":    "\U0001F4B3",        # 💳
-    "binance":   "\U0001F4B0",        # 💰
-    "coinbase":  "\U0001FA99",        # 🪙
-    "uber":      "\U0001F697",        # 🚗
-    "airbnb":    "\U0001F3E0",        # 🏠
-    "reddit":    "\U0001F47D",        # 👽
-    "pinterest": "\U0001F4CC",        # 📌
-    "skype":     "\u260E\uFE0F",       # ☎️
-    "zoom":      "\U0001F3A5",        # 🎥
-    "signal":    "\U0001F512",        # 🔒
-    "viber":     "\U0001F4DE",        # 📞
-    "line":      "\U0001F4AC",        # 💬
-    "wechat":    "\U0001F49A",        # 💚
-    "imo":       "\U0001F4F2",        # 📲
-    "truecaller":"\U0001F4DE",        # 📞
-    "bank":      "\U0001F3E6",        # 🏦
-    "hdfc":      "\U0001F3E6",        # 🏦
-    "icici":     "\U0001F3E6",        # 🏦
-    "sbi":       "\U0001F3E6",        # 🏦
-    "paytm":     "\U0001F4B8",        # 💸
-    "phonepe":   "\U0001F4B8",        # 💸
-    "gpay":      "\U0001F4B8",        # 💸
-    "default":   "\U0001F4E9",        # 📩
+COUNTRIES = {
+    "PK": ("\U0001F1F5\U0001F1F0", "Pakistan"),
+    "US": ("\U0001F1FA\U0001F1F8", "United States"),
+    "GB": ("\U0001F1EC\U0001F1E7", "United Kingdom"),
+    "IN": ("\U0001F1EE\U0001F1F3", "India"),
+    "CA": ("\U0001F1E8\U0001F1E6", "Canada"),
+    "AU": ("\U0001F1E6\U0001F1FA", "Australia"),
+    "DE": ("\U0001F1E9\U0001F1EA", "Germany"),
+    "FR": ("\U0001F1EB\U0001F1F7", "France"),
+    "IT": ("\U0001F1EE\U0001F1F9", "Italy"),
+    "ES": ("\U0001F1EA\U0001F1F8", "Spain"),
+    "BR": ("\U0001F1E7\U0001F1F7", "Brazil"),
+    "MX": ("\U0001F1F2\U0001F1FD", "Mexico"),
+    "JP": ("\U0001F1EF\U0001F1F5", "Japan"),
+    "CN": ("\U0001F1E8\U0001F1F3", "China"),
+    "RU": ("\U0001F1F7\U0001F1FA", "Russia"),
+    "ZA": ("\U0001F1FF\U0001F1E6", "South Africa"),
+    "NG": ("\U0001F1F3\U0001F1EC", "Nigeria"),
+    "EG": ("\U0001F1EA\U0001F1EC", "Egypt"),
+    "SA": ("\U0001F1F8\U0001F1E6", "Saudi Arabia"),
+    "AE": ("\U0001F1E6\U0001F1EA", "UAE"),
+    "BD": ("\U0001F1E7\U0001F1E9", "Bangladesh"),
+    "ID": ("\U0001F1EE\U0001F1E9", "Indonesia"),
+    "MY": ("\U0001F1F2\U0001F1FE", "Malaysia"),
+    "SG": ("\U0001F1F8\U0001F1EC", "Singapore"),
+    "HK": ("\U0001F1ED\U0001F1F0", "Hong Kong"),
+    "TR": ("\U0001F1F9\U0001F1F7", "Turkey"),
+    "PL": ("\U0001F1F5\U0001F1F1", "Poland"),
+    "UA": ("\U0001F1FA\U0001F1E6", "Ukraine"),
+    "RO": ("\U0001F1F7\U0001F1F4", "Romania"),
+    "NL": ("\U0001F1F3\U0001F1F1", "Netherlands"),
+    "BE": ("\U0001F1E7\U0001F1EA", "Belgium"),
+    "CH": ("\U0001F1E8\U0001F1ED", "Switzerland"),
+    "AT": ("\U0001F1E6\U0001F1F9", "Austria"),
+    "SE": ("\U0001F1F8\U0001F1EA", "Sweden"),
+    "NO": ("\U0001F1F3\U0001F1F4", "Norway"),
+    "DK": ("\U0001F1E9\U0001F1F0", "Denmark"),
+    "FI": ("\U0001F1EB\U0001F1EE", "Finland"),
+    "IE": ("\U0001F1EE\U0001F1EA", "Ireland"),
+    "PT": ("\U0001F1F5\U0001F1F9", "Portugal"),
+    "GR": ("\U0001F1EC\U0001F1F7", "Greece"),
+    "KR": ("\U0001F1F0\U0001F1F7", "South Korea"),
+    "NZ": ("\U0001F1F3\U0001F1FF", "New Zealand"),
+    "TW": ("\U0001F1F9\U0001F1FC", "Taiwan"),
+    "TH": ("\U0001F1F9\U0001F1ED", "Thailand"),
+    "VN": ("\U0001F1FB\U0001F1F3", "Vietnam"),
+    "PH": ("\U0001F1F5\U0001F1ED", "Philippines"),
 }
 
-# App detection keywords (order matters - more specific first)
+PREFIX_FALLBACK = [
+    ("92", "PK"), ("44", "GB"), ("91", "IN"), ("880", "BD"),
+    ("62", "ID"), ("60", "MY"), ("65", "SG"), ("852", "HK"),
+    ("90", "TR"), ("48", "PL"), ("380", "UA"), ("40", "RO"),
+    ("31", "NL"), ("32", "BE"), ("41", "CH"), ("43", "AT"),
+    ("46", "SE"), ("47", "NO"), ("45", "DK"), ("358", "FI"),
+    ("353", "IE"), ("351", "PT"), ("30", "GR"), ("27", "ZA"),
+    ("234", "NG"), ("20", "EG"), ("966", "SA"), ("971", "AE"),
+    ("7", "RU"), ("86", "CN"), ("81", "JP"), ("82", "KR"),
+    ("61", "AU"), ("64", "NZ"), ("55", "BR"), ("52", "MX"),
+    ("49", "DE"), ("33", "FR"), ("39", "IT"), ("34", "ES"),
+    ("886", "TW"), ("66", "TH"), ("84", "VN"), ("63", "PH"),
+    ("1", "US"),
+]
+
+APP_LOGOS = {
+    "whatsapp":  "\U0001F4F1", "telegram":  "\u2708\uFE0F",
+    "instagram": "\U0001F4F8", "facebook":  "\U0001F535",
+    "twitter":   "\U0001F426", "tiktok":    "\U0001F3B5",
+    "snapchat":  "\U0001F47B", "discord":   "\U0001F3AE",
+    "youtube":   "\U0001F4FA", "linkedin":  "\U0001F4BC",
+    "google":    "\U0001F50D", "gmail":     "\U0001F4E7",
+    "microsoft": "\U0001F7EA", "apple":     "\U0001F34E",
+    "amazon":    "\U0001F4E6", "netflix":   "\U0001F3AC",
+    "paypal":    "\U0001F4B3", "binance":   "\U0001F4B0",
+    "coinbase":  "\U0001FA99", "uber":      "\U0001F697",
+    "airbnb":    "\U0001F3E0", "reddit":    "\U0001F47D",
+    "pinterest": "\U0001F4CC", "skype":     "\u260E\uFE0F",
+    "zoom":      "\U0001F3A5", "signal":    "\U0001F512",
+    "viber":     "\U0001F4DE", "line":      "\U0001F4AC",
+    "wechat":    "\U0001F49A", "imo":       "\U0001F4F2",
+    "truecaller":"\U0001F4DE", "bank":      "\U0001F3E6",
+    "hdfc":      "\U0001F3E6", "icici":     "\U0001F3E6",
+    "sbi":       "\U0001F3E6", "paytm":     "\U0001F4B8",
+    "phonepe":   "\U0001F4B8", "gpay":      "\U0001F4B8",
+    "default":   "\U0001F4E9",
+}
+
 APP_KEYWORDS = [
     ("whatsapp",  ["whatsapp", "whats app", "wa code", "wa-", "wa otp"]),
     ("telegram",  ["telegram", "tg code", "tg-", "telegram code"]),
@@ -171,50 +232,23 @@ APP_KEYWORDS = [
     ("bank",      ["bank", "otp for transaction", "transaction"]),
 ]
 
-# ═══════════════════════════════════════════════════════
-# COUNTRY FLAGS
-# ═══════════════════════════════════════════════════════
-COUNTRY_FLAGS = {
-    "PK": "\U0001F1F5\U0001F1F0", "US": "\U0001F1FA\U0001F1F8",
-    "GB": "\U0001F1EC\U0001F1E7", "IN": "\U0001F1EE\U0001F1F3",
-    "CA": "\U0001F1E8\U0001F1E6", "AU": "\U0001F1E6\U0001F1FA",
-    "DE": "\U0001F1E9\U0001F1EA", "FR": "\U0001F1EB\U0001F1F7",
-    "IT": "\U0001F1EE\U0001F1F9", "ES": "\U0001F1EA\U0001F1F8",
-    "BR": "\U0001F1E7\U0001F1F7", "MX": "\U0001F1F2\U0001F1FD",
-    "JP": "\U0001F1EF\U0001F1F5", "CN": "\U0001F1E8\U0001F1F3",
-    "RU": "\U0001F1F7\U0001F1FA", "ZA": "\U0001F1FF\U0001F1E6",
-    "NG": "\U0001F1F3\U0001F1EC", "EG": "\U0001F1EA\U0001F1EC",
-    "SA": "\U0001F1F8\U0001F1E6", "AE": "\U0001F1E6\U0001F1EA",
-    "BD": "\U0001F1E7\U0001F1E9", "ID": "\U0001F1EE\U0001F1E9",
-    "MY": "\U0001F1F2\U0001F1FE", "SG": "\U0001F1F8\U0001F1EC",
-    "HK": "\U0001F1ED\U0001F1F0", "TR": "\U0001F1F9\U0001F1F7",
-    "PL": "\U0001F1F5\U0001F1F1", "UA": "\U0001F1FA\U0001F1E6",
-    "RO": "\U0001F1F7\U0001F1F4", "NL": "\U0001F1F3\U0001F1F1",
-    "BE": "\U0001F1E7\U0001F1EA", "CH": "\U0001F1E8\U0001F1ED",
-    "AT": "\U0001F1E6\U0001F1F9", "SE": "\U0001F1F8\U0001F1EA",
-    "NO": "\U0001F1F3\U0001F1F4", "DK": "\U0001F1E9\U0001F1F0",
-    "FI": "\U0001F1EB\U0001F1EE", "IE": "\U0001F1EE\U0001F1EA",
-    "PT": "\U0001F1F5\U0001F1F9", "GR": "\U0001F1EC\U0001F1F7",
-    "KR": "\U0001F1F0\U0001F1F7", "NZ": "\U0001F1F3\U0001F1FF",
-    "TW": "\U0001F1F9\U0001F1FC", "TH": "\U0001F1F9\U0001F1ED",
-    "VN": "\U0001F1FB\U0001F1F3", "PH": "\U0001F1F5\U0001F1ED",
+SIM_OPERATORS = {
+    "9230": ("Jazz", E_GREEN), "9231": ("Jazz", E_GREEN),
+    "9232": ("Warid/Jazz", E_GREEN), "9233": ("Ufone", E_YELLOW),
+    "9234": ("Telenor", E_BLUE), "9235": ("Telenor", E_BLUE),
+    "9236": ("Jazz", E_GREEN),
+    "919": ("Airtel/Vi", E_RED), "918": ("Airtel", E_RED), "917": ("Idea", E_YELLOW),
+    "447": ("UK Mobile", E_BLUE),
+    "9715": ("Etisalat", E_GREEN), "97150": ("Etisalat", E_GREEN), "97155": ("du", E_RED),
+    "9665": ("STC/Mobily", E_GREEN),
+    "8801": ("Grameenphone", E_RED),
+    "1": ("US Carrier", E_BLUE),
 }
 
-PREFIX_FALLBACK = [
-    ("92", "PK"), ("44", "GB"), ("91", "IN"), ("880", "BD"),
-    ("62", "ID"), ("60", "MY"), ("65", "SG"), ("852", "HK"),
-    ("90", "TR"), ("48", "PL"), ("380", "UA"), ("40", "RO"),
-    ("31", "NL"), ("32", "BE"), ("41", "CH"), ("43", "AT"),
-    ("46", "SE"), ("47", "NO"), ("45", "DK"), ("358", "FI"),
-    ("353", "IE"), ("351", "PT"), ("30", "GR"), ("27", "ZA"),
-    ("234", "NG"), ("20", "EG"), ("966", "SA"), ("971", "AE"),
-    ("7", "RU"), ("86", "CN"), ("81", "JP"), ("82", "KR"),
-    ("61", "AU"), ("64", "NZ"), ("55", "BR"), ("52", "MX"),
-    ("49", "DE"), ("33", "FR"), ("39", "IT"), ("34", "ES"),
-    ("886", "TW"), ("66", "TH"), ("84", "VN"), ("63", "PH"),
-    ("1", "US"),
-]
 
+# ═══════════════════════════════════════════════════════
+# HELPERS
+# ═══════════════════════════════════════════════════════
 
 def escape_html(text):
     if text is None:
@@ -223,13 +257,15 @@ def escape_html(text):
 
 
 def mask_number(number):
-    if len(number) > 7:
-        return number[:3] + "\u2022\u2022\u2022" + number[-4:]
-    return number or "Unknown"
+    if not number:
+        return "Unknown"
+    n = re.sub(r"\D", "", str(number))
+    if len(n) > 7:
+        return n[:3] + "\u2022\u2022\u2022" + n[-4:]
+    return n or "Unknown"
 
 
 def detect_country_code(value):
-    """Return country code like PK, US"""
     if not value:
         return "UNKNOWN"
     clean = re.sub(r"\D", "", str(value))
@@ -250,72 +286,124 @@ def detect_country_code(value):
     return "UNKNOWN"
 
 
-def flag_for_number(value):
+def country_info(value):
     code = detect_country_code(value)
-    return COUNTRY_FLAGS.get(code, E_GLOBE)
+    flag, name = COUNTRIES.get(code, (E_GLOBE, "Unknown"))
+    return flag, name, code
+
+
+def detect_sim_operator(number):
+    if not number:
+        return None, None
+    clean = re.sub(r"\D", "", str(number))
+    for prefix in sorted(SIM_OPERATORS.keys(), key=len, reverse=True):
+        if clean.startswith(prefix):
+            return SIM_OPERATORS[prefix]
+    return None, None
 
 
 def detect_app(message_text):
-    """Detect app from message. Returns (app_name, logo)"""
     if not message_text:
         return "unknown", APP_LOGOS["default"]
-
     low = message_text.lower()
     for app_name, keywords in APP_KEYWORDS:
         for kw in keywords:
             if kw in low:
                 return app_name, APP_LOGOS.get(app_name, APP_LOGOS["default"])
-
     return "unknown", APP_LOGOS["default"]
 
 
 def extract_otp(message_text):
-    """
-    ULTRA OTP Extraction - Handles:
-    - 123-456 (with dash) → returns 123-456
-    - 123 456 (with space) → returns 123-456
-    - 12345 → returns 12345
-    - WhatsApp-style codes
-    """
+    """Returns (otp, confidence, category)"""
     if not message_text:
-        return "N/A"
+        return "N/A", "LOW", "NONE"
 
-    # ═══ Priority 1: Formatted OTP with dash/space (e.g., 123-456, 123 456) ═══
-    # This catches WhatsApp/Telegram style "123-456"
     m = re.search(r"(?<!\d)(\d{3,4}[\s\-]\d{3,4})(?!\d)", message_text)
     if m:
-        # Normalize space to dash
         raw = m.group(1)
         clean = re.sub(r"\s+", "-", raw)
-        return clean
+        return clean, "HIGH", "CODE"
 
-    # ═══ Priority 2: OTP near keywords (multi-language) ═══
-    keyword_patterns = [
-        r"(?:otp|code|pin|verify|verification|password|passcode)[^\d]{0,15}(\d{3,9})",
-        r"(?:کوڈ|پاس کوڈ)[^\d]{0,15}(\d{3,9})",
-        r"(?:कोड|ओटीपी|पिन)[^\d]{0,15}(\d{3,9})",
-        r"(?:رمز|كود)[^\d]{0,15}(\d{3,9})",
-        r"(?:কোড|ওটিপি)[^\d]{0,15}(\d{3,9})",
-        r"(?:kode|verifikasi)[^\d]{0,15}(\d{3,9})",
-        r"(?:kod|şifre)[^\d]{0,15}(\d{3,9})",
-        r"(?:code|vérification)[^\d]{0,15}(\d{3,9})",
+    high_patterns = [
+        (r"(?:otp|o\.t\.p)[^\d]{0,15}(\d{3,9})", "OTP"),
+        (r"(?:verification code|verify code)[^\d]{0,15}(\d{3,9})", "CODE"),
+        (r"(?:login code|security code)[^\d]{0,15}(\d{3,9})", "CODE"),
+        (r"(?:your code is|code:)[^\d]{0,15}(\d{3,9})", "CODE"),
+        (r"(?:one[-\s]?time[-\s]?password)[^\d]{0,15}(\d{3,9})", "OTP"),
+        (r"(?:use code)[^\d]{0,15}(\d{3,9})", "CODE"),
     ]
-    for pattern in keyword_patterns:
+    for pattern, cat in high_patterns:
         m = re.search(pattern, message_text, re.IGNORECASE)
         if m:
-            return m.group(1)
+            return m.group(1), "HIGH", cat
 
-    # ═══ Priority 3: 4-8 digit standalone ═══
+    medium_patterns = [
+        (r"(?:کوڈ|پاس کوڈ)[^\d]{0,15}(\d{3,9})", "CODE"),
+        (r"(?:कोड|ओटीपी|पिन)[^\d]{0,15}(\d{3,9})", "OTP"),
+        (r"(?:رمز|كود)[^\d]{0,15}(\d{3,9})", "CODE"),
+        (r"(?:কোড|ওটিপি)[^\d]{0,15}(\d{3,9})", "OTP"),
+        (r"(?:kode|verifikasi)[^\d]{0,15}(\d{3,9})", "CODE"),
+        (r"(?:kod|şifre)[^\d]{0,15}(\d{3,9})", "CODE"),
+        (r"(?:code|vérification)[^\d]{0,15}(\d{3,9})", "CODE"),
+        (r"(?:pin)[^\d]{0,15}(\d{3,9})", "PIN"),
+        (r"(?:password)[^\d]{0,15}(\d{3,9})", "PIN"),
+    ]
+    for pattern, cat in medium_patterns:
+        m = re.search(pattern, message_text, re.IGNORECASE)
+        if m:
+            return m.group(1), "MEDIUM", cat
+
     m = re.search(r"(?<!\d)(\d{4,8})(?!\d)", message_text)
     if m:
-        return m.group(1)
+        return m.group(1), "LOW", "CODE"
 
-    # ═══ Priority 4: 3-9 digit standalone ═══
     m = re.search(r"(?<!\d)(\d{3,9})(?!\d)", message_text)
     if m:
-        return m.group(1)
+        return m.group(1), "LOW", "CODE"
 
-    return "N/A"
+    return "N/A", "LOW", "NONE"
+
+
+def message_category(message_text):
+    if not message_text:
+        return []
+    low = message_text.lower()
+    tags = []
+    if any(w in low for w in ["otp", "verification", "verify", "one-time"]):
+        tags.append("OTP")
+    if any(w in low for w in ["bank", "transaction", "debit", "credit", "account"]):
+        tags.append("Banking")
+    if any(w in low for w in ["login", "sign in", "sign-in"]):
+        tags.append("Login")
+    if any(w in low for w in ["payment", "paid", "purchase", "order"]):
+        tags.append("Payment")
+    if any(w in low for w in ["delivery", "shipped", "courier"]):
+        tags.append("Delivery")
+    if any(w in low for w in ["password", "reset", "recover"]):
+        tags.append("Password")
+    if any(w in low for w in ["offer", "discount", "sale", "promo"]):
+        tags.append("Promo")
+    return tags
+
+
+def relative_time(dt_str):
+    try:
+        dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+        now = datetime.utcnow()
+        diff = (now - dt).total_seconds()
+        if diff < 60:
+            return "just now"
+        if diff < 3600:
+            return str(int(diff // 60)) + " min ago"
+        if diff < 86400:
+            return str(int(diff // 3600)) + " hour ago"
+        return str(int(diff // 86400)) + " day ago"
+    except Exception:
+        return ""
+
+
+def pkt_time():
+    return (datetime.utcnow() + timedelta(hours=PKT_OFFSET_HOURS)).strftime("%H:%M:%S")
 
 
 def generate_sms_id(message):
@@ -327,65 +415,76 @@ def generate_sms_id(message):
     return dt + "_" + num + "_" + content_hash
 
 
+def is_owner(user_id):
+    try:
+        return int(user_id) == int(TELEGRAM_OWNER_ID)
+    except (TypeError, ValueError):
+        return False
+
+
 # ═══════════════════════════════════════════════════════
-# MESSAGE BUILDERS
+# PREMIUM SMS CARD
 # ═══════════════════════════════════════════════════════
 
 def sms_text(message, masked=True):
-    """
-    Beautiful SMS message with app logo + country flag.
-
-    Example:
-        📩 ɴᴇᴡ sᴍs
-
-        📱 ᴡʜᴀᴛsᴀᴘᴘ • 🇵🇰 ᴘᴀᴋɪsᴛᴀɴ
-
-        📞 923•••4567
-    """
     number = str(message.get("num", ""))
     text = str(message.get("message", ""))
+    dt = str(message.get("dt", ""))
 
-    # Detect app + country
     app_name, app_logo = detect_app(text)
-    country_code = detect_country_code(number)
-    flag = COUNTRY_FLAGS.get(country_code, E_GLOBE)
-    country_name = country_code if country_code != "UNKNOWN" else "Unknown"
+    flag, country_name, country_code = country_info(number)
+    sim_name, sim_dot = detect_sim_operator(number)
+    otp, confidence, otp_cat = extract_otp(text)
+    tags = message_category(text)
+    rel_time = relative_time(dt) if dt else ""
 
-    if masked:
-        display_number = mask_number(number)
-    else:
-        display_number = number or "Unknown"
+    display_number = mask_number(number) if masked else (number or "Unknown")
 
-    # Build message
     lines = []
-    lines.append(E_INBOX + " <b>New SMS</b>")
-    lines.append("")
+    lines.append(E_SPARKLE + " " + E_BELL + " <b>N E W   M E S S A G E</b> " + E_BELL + " " + E_SPARKLE)
+    lines.append(DIV_SHORT)
 
     if app_name != "unknown":
-        lines.append(app_logo + " <b>" + app_name.upper() + "</b> " + DOT + " " + flag + " " + country_name)
+        app_line = app_logo + " <b>" + app_name.upper() + "</b>"
     else:
-        lines.append(E_MSG + " <b>SMS</b> " + DOT + " " + flag + " " + country_name)
+        app_line = E_MSG + " <b>SMS</b>"
+    app_line += "  " + DOT + "  " + flag + " " + country_name
+    lines.append(app_line)
 
-    lines.append("")
-    lines.append(E_BOLT + " <code>" + escape_html(display_number) + "</code>")
+    if otp != "N/A":
+        conf_icon = E_GREEN if confidence == "HIGH" else (E_YELLOW if confidence == "MEDIUM" else E_RED)
+        lines.append(DIV_SHORT)
+        lines.append(
+            E_KEY + " <b>" + otp_cat + " :</b>  <code>" + escape_html(otp) + "</code>  " + conf_icon
+        )
+        lines.append(DIV_SHORT)
 
+    num_line = E_BOLT + " <code>" + escape_html(display_number) + "</code>"
+    if sim_name:
+        num_line += "  " + (sim_dot or E_SIGNAL) + " " + sim_name
+    lines.append(num_line)
+
+    time_parts = []
+    if rel_time:
+        time_parts.append(E_CLOCK + " " + rel_time)
+    time_parts.append(E_TIME + " " + pkt_time() + " PKT")
+    lines.append("  " + DOT + "  ".join(time_parts))
+
+    if tags:
+        tag_str = " ".join(["#" + t for t in tags])
+        lines.append(E_TAG + " <i>" + tag_str + "</i>")
+
+    lines.append(E_DIAMOND + " <i>RN OTP Premium</i> " + E_DIAMOND)
     return "\n".join(lines)
 
 
 def message_buttons(message_text, sms_id, fallback=False):
-    """
-    Ultra buttons:
-    [📋 Copy OTP: 123-456]
-    [👁 Full Message] [📢 Channel]
-    [🤖 Open Bot]
-    """
-    otp = extract_otp(message_text)
+    """Buttons — accessible by EVERYONE in the group"""
+    otp, _, _ = extract_otp(message_text)
     keyboard = []
 
-    # Row 1: OTP Copy
     row1 = []
     if otp != "N/A":
-        # Show the FULL OTP in button text
         if fallback:
             row1.append({
                 "text": E_CLIP + " Copy OTP: " + otp,
@@ -403,61 +502,52 @@ def message_buttons(message_text, sms_id, fallback=False):
         })
     keyboard.append(row1)
 
-    # Row 2: Full + Channel
-    row2 = [
-        {"text": E_EYES + " Full Message", "callback_data": "full:" + sms_id}
-    ]
+    row2 = [{"text": E_EYES + " Full Message", "callback_data": "full:" + sms_id}]
     if TELEGRAM_CHANNEL_URL:
-        row2.append({
-            "text": E_MEGA + " Channel",
-            "url": TELEGRAM_CHANNEL_URL
-        })
+        row2.append({"text": E_MEGA + " Channel", "url": TELEGRAM_CHANNEL_URL})
     keyboard.append(row2)
 
-    # Row 3: Bot
     clean_username = BUTTON_BOT_USERNAME.lstrip("@")
     keyboard.append([
-        {"text": E_BOT + " Open Bot", "url": "https://t.me/" + clean_username}
+        {"text": E_ROCKET + " Open Bot", "url": "https://t.me/" + clean_username}
     ])
 
     return {"inline_keyboard": keyboard}
 
 
 def build_full_message_alert(message_text, otp="N/A", app_name="unknown",
-                              country_code="UNKNOWN", number=""):
-    """
-    Full message alert format:
-    ━━━━━━━━━━━━━━━
-    📱 WHATSAPP • 🇵🇰 PK
-    📞 923•••4567
-    ━━━━━━━━━━━━━━━
-    🔑 OTP: 123-456
-    ━━━━━━━━━━━━━━━
-    💬 Full Message:
-    [original text]
-    """
-    flag = COUNTRY_FLAGS.get(country_code, E_GLOBE)
+                              country_code="UNKNOWN", number="", dt=""):
+    flag, name = COUNTRIES.get(country_code, (E_GLOBE, country_code))
     app_logo = APP_LOGOS.get(app_name, APP_LOGOS["default"])
+    rel = relative_time(dt) if dt else ""
 
-    lines = []
-    lines.append(DIVIDER)
+    lines = [
+        E_SCROLL + " <b>FULL MESSAGE</b> " + E_SCROLL,
+        DIVIDER,
+    ]
     if app_name != "unknown":
-        lines.append(app_logo + " " + app_name.upper() + " " + DOT + " " + flag + " " + country_code)
+        lines.append(app_logo + " <b>" + app_name.upper() + "</b>")
     else:
-        lines.append(E_MSG + " SMS " + DOT + " " + flag + " " + country_code)
-
-    if number:
-        lines.append(E_BOLT + " " + number)
+        lines.append(E_MSG + " <b>SMS</b>")
+    lines.append(flag + " " + name + "  " + DOT + "  " + E_PHONE + " <code>" + escape_html(number) + "</code>")
+    if rel:
+        lines.append(E_CLOCK + " " + rel + "  " + DOT + "  " + E_TIME + " " + pkt_time() + " PKT")
 
     if otp != "N/A":
         lines.append(DIVIDER)
-        lines.append(E_KEY + " OTP: " + otp)
+        lines.append(E_KEY + " <b>OTP:</b> <code>" + escape_html(otp) + "</code>")
 
     lines.append(DIVIDER)
-    lines.append(E_MSG + " " + message_text)
+    lines.append(E_MSG + " <b>Message:</b>")
+    lines.append("")
+    lines.append(escape_html(message_text))
+    lines.append("")
+    lines.append(E_DIAMOND + " <i>RN OTP Premium</i> " + E_DIAMOND)
 
     return "\n".join(lines)
-            # ═══════════════════════════════════════════════════════
+
+
+# ═══════════════════════════════════════════════════════
 # DATABASE
 # ═══════════════════════════════════════════════════════
 
@@ -466,45 +556,36 @@ async def init_db():
     conn.row_factory = aiosqlite.Row
     await conn.execute(
         "CREATE TABLE IF NOT EXISTS forwarded_messages ("
-        "sms_id TEXT PRIMARY KEY, "
-        "claimed_at TEXT NOT NULL, "
-        "sent_at TEXT, "
-        "raw_num TEXT, "
-        "cli TEXT, "
-        "message_text TEXT, "
-        "payout TEXT, "
-        "dt TEXT, "
-        "app TEXT, "
-        "country TEXT, "
-        "otp TEXT)"
+        "sms_id TEXT PRIMARY KEY, claimed_at TEXT NOT NULL, sent_at TEXT, "
+        "raw_num TEXT, cli TEXT, message_text TEXT, payout TEXT, dt TEXT, "
+        "app TEXT, country TEXT, otp TEXT)"
     )
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_sent_at ON forwarded_messages(sent_at)")
     await conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_sent_at ON forwarded_messages(sent_at)"
-    )
-    await conn.execute(
-        "CREATE TABLE IF NOT EXISTS bot_state ("
-        "key TEXT PRIMARY KEY, "
-        "value TEXT NOT NULL)"
+        "CREATE TABLE IF NOT EXISTS bot_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
     )
     await conn.execute(
         "CREATE TABLE IF NOT EXISTS api_keys ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-        "api_key TEXT UNIQUE NOT NULL, "
-        "is_active BOOLEAN DEFAULT 1, "
-        "added_at TEXT NOT NULL)"
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, api_key TEXT UNIQUE NOT NULL, "
+        "is_active BOOLEAN DEFAULT 1, added_at TEXT NOT NULL)"
+    )
+    await conn.execute(
+        "CREATE TABLE IF NOT EXISTS intruders ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, username TEXT, "
+        "first_name TEXT, action TEXT, seen_at TEXT)"
+    )
+    await conn.execute(
+        "CREATE TABLE IF NOT EXISTS blocked_users ("
+        "user_id TEXT PRIMARY KEY, username TEXT, blocked_at TEXT)"
     )
     await conn.commit()
     return conn
 
 
 async def state_value(conn, key, default=""):
-    async with conn.execute(
-        "SELECT value FROM bot_state WHERE key = ?", (key,)
-    ) as cursor:
-        row = await cursor.fetchone()
-        if row:
-            return str(row["value"])
-        return default
+    async with conn.execute("SELECT value FROM bot_state WHERE key = ?", (key,)) as c:
+        row = await c.fetchone()
+        return str(row["value"]) if row else default
 
 
 async def set_state(conn, key, value):
@@ -521,20 +602,13 @@ async def save_message_data(conn, sms_id, raw_num, cli, message_text,
     now = datetime.now(timezone.utc).isoformat()
     await conn.execute(
         "INSERT INTO forwarded_messages("
-        "sms_id, claimed_at, raw_num, cli, message_text, payout, dt, "
-        "app, country, otp) "
+        "sms_id, claimed_at, raw_num, cli, message_text, payout, dt, app, country, otp) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(sms_id) DO UPDATE SET "
-        "raw_num = excluded.raw_num, "
-        "cli = excluded.cli, "
-        "message_text = excluded.message_text, "
-        "payout = excluded.payout, "
-        "dt = excluded.dt, "
-        "app = excluded.app, "
-        "country = excluded.country, "
-        "otp = excluded.otp",
-        (sms_id, now, raw_num, cli, message_text, payout, dt,
-         app, country, otp),
+        "raw_num=excluded.raw_num, cli=excluded.cli, message_text=excluded.message_text, "
+        "payout=excluded.payout, dt=excluded.dt, app=excluded.app, "
+        "country=excluded.country, otp=excluded.otp",
+        (sms_id, now, raw_num, cli, message_text, payout, dt, app, country, otp),
     )
     await conn.commit()
 
@@ -542,8 +616,8 @@ async def save_message_data(conn, sms_id, raw_num, cli, message_text,
 async def claim_message(conn, sms_id):
     async with conn.execute(
         "SELECT sent_at FROM forwarded_messages WHERE sms_id = ?", (sms_id,)
-    ) as cursor:
-        existing = await cursor.fetchone()
+    ) as c:
+        existing = await c.fetchone()
     if existing and existing["sent_at"] is not None:
         return False
     if existing:
@@ -555,8 +629,8 @@ async def claim_message(conn, sms_id):
     await conn.commit()
     async with conn.execute(
         "SELECT 1 FROM forwarded_messages WHERE sms_id = ?", (sms_id,)
-    ) as cursor:
-        row = await cursor.fetchone()
+    ) as c:
+        row = await c.fetchone()
         return row is not None
 
 
@@ -571,10 +645,9 @@ async def mark_sent(conn, sms_id):
 async def get_message_data(conn, sms_id):
     async with conn.execute(
         "SELECT raw_num, cli, message_text, payout, dt, app, country, otp "
-        "FROM forwarded_messages WHERE sms_id = ?",
-        (sms_id,),
-    ) as cursor:
-        row = await cursor.fetchone()
+        "FROM forwarded_messages WHERE sms_id = ?", (sms_id,)
+    ) as c:
+        row = await c.fetchone()
     if not row:
         return None
     return {
@@ -593,8 +666,8 @@ async def cleanup_old_records(conn, days=30):
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     async with conn.execute(
         "DELETE FROM forwarded_messages WHERE sent_at < ?", (cutoff,)
-    ) as cursor:
-        deleted = cursor.rowcount
+    ) as c:
+        deleted = c.rowcount
     await conn.commit()
     return deleted
 
@@ -608,26 +681,22 @@ async def get_db_stats(conn):
         "SELECT COUNT(*) AS c FROM forwarded_messages WHERE sent_at IS NULL"
     ) as c:
         pending = (await c.fetchone())["c"]
-    async with conn.execute(
-        "SELECT COUNT(*) AS c FROM forwarded_messages"
-    ) as c:
+    async with conn.execute("SELECT COUNT(*) AS c FROM forwarded_messages") as c:
         total = (await c.fetchone())["c"]
     async with conn.execute(
-        "SELECT app, COUNT(*) AS c FROM forwarded_messages "
-        "WHERE sent_at IS NOT NULL GROUP BY app "
-        "ORDER BY c DESC LIMIT 10"
+        "SELECT COALESCE(app,'unknown') AS app, COUNT(*) AS c "
+        "FROM forwarded_messages WHERE sent_at IS NOT NULL "
+        "GROUP BY COALESCE(app,'unknown') ORDER BY c DESC LIMIT 10"
     ) as c:
         by_app = await c.fetchall()
     return {
-        "sent": sent,
-        "pending": pending,
-        "total": total,
+        "sent": sent, "pending": pending, "total": total,
         "by_app": [dict(r) for r in by_app],
     }
 
 
 # ═══════════════════════════════════════════════════════
-# API MANAGEMENT
+# API KEY MANAGEMENT
 # ═══════════════════════════════════════════════════════
 
 async def add_api_key(conn, api_key):
@@ -645,8 +714,8 @@ async def add_api_key(conn, api_key):
 async def remove_api_key(conn, api_key):
     async with conn.execute(
         "DELETE FROM api_keys WHERE api_key = ?", (api_key,)
-    ) as cursor:
-        deleted = cursor.rowcount
+    ) as c:
+        deleted = c.rowcount
     await conn.commit()
     return deleted > 0
 
@@ -654,32 +723,24 @@ async def remove_api_key(conn, api_key):
 async def get_all_api_keys(conn):
     async with conn.execute(
         "SELECT api_key, is_active, added_at FROM api_keys ORDER BY id"
-    ) as cursor:
-        rows = await cursor.fetchall()
-    return [dict(row) for row in rows]
+    ) as c:
+        rows = await c.fetchall()
+    return [dict(r) for r in rows]
 
 
 async def load_api_keys(conn):
     global api_keys, current_api_index, GREEN_SMS_API_KEY
     keys = await get_all_api_keys(conn)
-    active = []
-    for k in keys:
-        if k["is_active"]:
-            active.append(k["api_key"])
-    api_keys = active
-
-    if api_keys:
+    active = [k["api_key"] for k in keys if k["is_active"]]
+    if active:
+        api_keys = active
         current_api_index = 0
         GREEN_SMS_API_KEY = api_keys[0]
-        logger.info("Loaded " + str(len(api_keys)) + " API keys")
+        logger.info("Loaded " + str(len(api_keys)) + " API keys from DB")
     else:
-        if GREEN_SMS_API_KEY:
-            api_keys = [GREEN_SMS_API_KEY]
-            current_api_index = 0
-            logger.info("No API keys in DB, using hardcoded key")
-        else:
-            logger.error("No API keys available!")
-
+        api_keys = [GREEN_SMS_API_KEY]
+        current_api_index = 0
+        logger.info("Using hardcoded API key")
     return api_keys
 
 
@@ -705,8 +766,6 @@ async def rotate_api_key(conn):
 # ═══════════════════════════════════════════════════════
 
 async def fetch_all_messages(since_dt=""):
-    global current_api_index, GREEN_SMS_API_KEY
-
     api_key = get_current_api_key()
     if not api_key:
         raise RuntimeError("No API key available")
@@ -722,16 +781,11 @@ async def fetch_all_messages(since_dt=""):
     records_limit = MAX_RECORDS
 
     logger.info("Fetching: " + since_dt + " -> " + current_dt2)
-    logger.info("API: " + api_key[:20] + "...")
 
     while True:
         try:
             batch_count += 1
-            params = {
-                "dt1": since_dt,
-                "dt2": current_dt2,
-                "records": records_limit,
-            }
+            params = {"dt1": since_dt, "dt2": current_dt2, "records": records_limit}
 
             response = await http_client.get(
                 GREEN_SMS_API,
@@ -742,7 +796,7 @@ async def fetch_all_messages(since_dt=""):
 
             if response.status_code == 429:
                 retry_after = int(response.headers.get("Retry-After", 60))
-                logger.warning("Rate limited. Waiting " + str(retry_after) + "s")
+                logger.warning("Rate limited. Wait " + str(retry_after) + "s")
                 await asyncio.sleep(retry_after)
                 continue
 
@@ -750,28 +804,23 @@ async def fetch_all_messages(since_dt=""):
                 new_limit = max(10, records_limit // 2)
                 if new_limit < records_limit:
                     records_limit = new_limit
-                    logger.warning("503 -> reducing records to " + str(records_limit))
                     continue
-                logger.error("503 with minimum records. Stop.")
                 break
 
             if response.status_code == 401:
-                logger.error("401 Unauthorized: " + api_key[:20] + "...")
+                logger.error("401 Unauthorized")
                 conn = await init_db()
                 try:
                     new_key = await rotate_api_key(conn)
                     if new_key and new_key != api_key:
-                        logger.info("Rotated API key")
                         api_key = new_key
                         continue
                 finally:
                     await conn.close()
-                raise RuntimeError("API 401 - check your API key")
+                raise RuntimeError("API 401 - invalid key")
 
             if response.status_code != 200:
-                logger.error(
-                    "HTTP " + str(response.status_code) + ": " + response.text[:200]
-                )
+                logger.error("HTTP " + str(response.status_code))
                 break
 
             payload = response.json()
@@ -780,13 +829,6 @@ async def fetch_all_messages(since_dt=""):
                 break
 
             results = payload.get("data", [])
-            total = payload.get("total", 0)
-
-            logger.info(
-                "Batch " + str(batch_count) + ": " + str(len(results)) +
-                " msgs (total: " + str(total) + ")"
-            )
-
             if not results:
                 break
 
@@ -794,30 +836,19 @@ async def fetch_all_messages(since_dt=""):
             total_fetched += len(results)
 
             if len(results) < records_limit:
-                logger.info(
-                    "Last batch (" + str(len(results)) + " < " +
-                    str(records_limit) + ")"
-                )
                 break
 
             oldest_dt_str = results[-1].get("dt", "")
-            if not oldest_dt_str:
-                break
-
-            if oldest_dt_str == last_used_dt2:
-                logger.info("Same dt2 - done")
+            if not oldest_dt_str or oldest_dt_str == last_used_dt2:
                 break
 
             last_used_dt2 = current_dt2
             current_dt2 = oldest_dt_str
-            logger.info("Next until " + current_dt2)
 
             if batch_count >= MAX_BATCHES:
-                logger.warning("Safety limit " + str(MAX_BATCHES) + " batches")
                 break
 
         except httpx.TimeoutException:
-            logger.error("API timeout")
             await asyncio.sleep(5)
             continue
         except Exception as e:
@@ -835,26 +866,20 @@ async def fetch_all_messages(since_dt=""):
 
 async def telegram_call(method, payload, retries=3):
     url = "https://api.telegram.org/bot" + BOT_TOKEN + "/" + method
-
     for attempt in range(retries):
         try:
             response = await http_client.post(url, json=payload, timeout=30)
 
             if response.status_code == 429:
                 retry_after = int(response.headers.get("Retry-After", 1))
-                logger.warning("TG rate limit. Wait " + str(retry_after) + "s")
                 await asyncio.sleep(retry_after)
                 continue
 
             if not response.is_success:
                 if attempt < retries - 1:
-                    wait = 2 ** attempt
-                    await asyncio.sleep(wait)
+                    await asyncio.sleep(2 ** attempt)
                     continue
-                raise RuntimeError(
-                    "TG HTTP " + str(response.status_code) + ": " +
-                    response.text[:500]
-                )
+                raise RuntimeError("TG HTTP " + str(response.status_code) + ": " + response.text[:300])
 
             result = response.json()
             if not result.get("ok"):
@@ -895,10 +920,8 @@ async def send_group_message(text, reply_markup):
         return await telegram_call("sendMessage", payload)
     except RuntimeError as e:
         err = str(e).lower()
-        bad = (
-            ("reply markup" in err) or ("button" in err) or
-            ("parse" in err) or ("copy_text" in err)
-        )
+        bad = (("reply markup" in err) or ("button" in err) or
+               ("parse" in err) or ("copy_text" in err))
         if bad:
             logger.warning("copy_text unsupported -> fallback")
             sms_id = ""
@@ -919,6 +942,10 @@ async def telegram_updates(offset):
     params = {"offset": offset, "timeout": 30, "limit": 100}
     try:
         response = await http_client.get(url, params=params, timeout=35)
+        if response.status_code == 409:
+            logger.warning("409 Conflict: doosra bot instance chal raha hai. 30s wait...")
+            await asyncio.sleep(30)
+            return []
         if not response.is_success:
             return []
         result = response.json()
@@ -932,69 +959,114 @@ async def telegram_updates(offset):
         return []
 
 
-async def animate_send(cid, frames_list, duration_each=0.3):
-    """Send an animated message with frames"""
-    if not ANIMATION_ENABLED:
-        return None
-    try:
-        first = await telegram_call("sendMessage", {
-            "chat_id": cid,
-            "text": frames_list[0],
-            "parse_mode": "HTML",
-        })
-        mid = first.get("result", {}).get("message_id")
-        if not mid:
-            return None
-        for frame in frames_list[1:]:
-            await asyncio.sleep(duration_each)
-            try:
-                await telegram_call("editMessageText", {
-                    "chat_id": cid,
-                    "message_id": mid,
-                    "text": frame,
-                    "parse_mode": "HTML",
-                })
-            except Exception:
-                pass
-        return mid
-    except Exception:
-        return None
-
-
-# ═══════════════════════════════════════════════════════
-# MESSAGE HANDLER HELPERS
-# ═══════════════════════════════════════════════════════
-
 async def get_full_message_alert(conn, sms_id):
-    """Build full message alert with app + country + OTP"""
     msg = await get_message_data(conn, sms_id)
     if not msg:
         return None
-
-    otp = extract_otp(msg["message_text"])
+    otp, _, _ = extract_otp(msg["message_text"])
     app_name, _ = detect_app(msg["message_text"])
-    country = msg.get("country", "UNKNOWN")
-    number = msg.get("raw_num", "")
-
-    # Mask the number
-    masked_num = mask_number(number) if number else ""
-
     return build_full_message_alert(
         message_text=msg["message_text"],
         otp=otp,
         app_name=app_name,
-        country_code=country,
-        number=masked_num,
-)                    
+        country_code=msg.get("country", "UNKNOWN"),
+        number=mask_number(msg.get("raw_num", "")),
+        dt=msg.get("dt", ""),
+    )
+
+
+# ═══════════════════════════════════════════════════════
+# SECURITY (Intruder log + Block)
+# ═══════════════════════════════════════════════════════
+
+async def load_blocked_users(conn):
+    global blocked_users
+    async with conn.execute("SELECT user_id FROM blocked_users") as c:
+        rows = await c.fetchall()
+        blocked_users = {str(r["user_id"]) for r in rows}
+    logger.info("Blocked users: " + str(len(blocked_users)))
+
+
+async def log_intruder(conn, user_id, username, first_name, action):
+    try:
+        await conn.execute(
+            "INSERT INTO intruders(user_id, username, first_name, action, seen_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (str(user_id), str(username or ""), str(first_name or ""),
+             str(action), datetime.now(timezone.utc).isoformat()),
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.warning("Intruder log failed: " + str(e))
+
+
+async def notify_owner_intrusion(conn, user_id, username, first_name, action):
+    try:
+        text = (
+            "\U0001F6A8 <b>UNAUTHORIZED ATTEMPT</b>\n" + DIV_SHORT + "\n"
+            "\U0001F464 <b>ID:</b> <code>" + str(user_id) + "</code>\n"
+            "\U0001F4DB <b>User:</b> @" + escape_html(username or "N/A") + "\n"
+            "\U0001F3F7 <b>Name:</b> " + escape_html(first_name or "N/A") + "\n"
+            "\u26A1 <b>Action:</b> <code>" + escape_html(action) + "</code>\n"
+            "\U0001F550 <b>Time:</b> " + pkt_time() + " PKT"
+        )
+        await telegram_call("sendMessage", {
+            "chat_id": TELEGRAM_OWNER_ID, "text": text, "parse_mode": "HTML",
+        })
+    except Exception as e:
+        logger.warning("Owner notify failed: " + str(e))
+
+
+async def block_user(conn, user_id, username=""):
+    global blocked_users
+    try:
+        await conn.execute(
+            "INSERT OR IGNORE INTO blocked_users(user_id, username, blocked_at) "
+            "VALUES (?, ?, ?)",
+            (str(user_id), str(username or ""), datetime.now(timezone.utc).isoformat()),
+        )
+        await conn.commit()
+        blocked_users.add(str(user_id))
+        return True
+    except Exception:
+        return False
+
+
+async def unblock_user(conn, user_id):
+    global blocked_users
+    try:
+        await conn.execute("DELETE FROM blocked_users WHERE user_id = ?", (str(user_id),))
+        await conn.commit()
+        blocked_users.discard(str(user_id))
+        return True
+    except Exception:
+        return False
+
+
+async def get_blocked_list(conn):
+    async with conn.execute(
+        "SELECT user_id, username, blocked_at FROM blocked_users ORDER BY blocked_at DESC"
+    ) as c:
+        rows = await c.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def get_intruders(conn, limit=20):
+    async with conn.execute(
+        "SELECT user_id, username, first_name, action, seen_at "
+        "FROM intruders ORDER BY id DESC LIMIT ?", (limit,)
+    ) as c:
+        rows = await c.fetchall()
+    return [dict(r) for r in rows]
+
+
 # ═══════════════════════════════════════════════════════
 # FORWARD LOOP
 # ═══════════════════════════════════════════════════════
 
 async def forward_loop(forward_event: asyncio.Event) -> None:
     global runtime_last_error, runtime_last_poll
-    last_error: str | None = None
     conn = await init_db()
-
     try:
         while True:
             try:
@@ -1007,14 +1079,22 @@ async def forward_loop(forward_event: asyncio.Event) -> None:
 
                 messages = await fetch_all_messages(last_dt)
 
+                if last_dt:
+                    messages = [m for m in messages if str(m.get("dt", "")) > last_dt]
+
                 if not messages:
                     logger.info("No new SMS")
                 else:
                     logger.info("Processing " + str(len(messages)) + " messages")
 
+                    newest_dt = ""
+                    for m in messages:
+                        d = str(m.get("dt", ""))
+                        if d > newest_dt:
+                            newest_dt = d
+
                     for message in messages:
                         sms_id = generate_sms_id(message)
-
                         claimed = await claim_message(conn, sms_id)
                         if not claimed:
                             continue
@@ -1025,22 +1105,18 @@ async def forward_loop(forward_event: asyncio.Event) -> None:
                         payout = str(message.get("payout", "0"))
                         dt = str(message.get("dt", ""))
 
-                        # Detect app + country + OTP
                         app_name, _ = detect_app(msg_text)
                         country_code = detect_country_code(raw_num)
-                        otp = extract_otp(msg_text)
+                        otp, _, _ = extract_otp(msg_text)
 
-                        # Save to DB
                         await save_message_data(
                             conn, sms_id, raw_num, cli, msg_text,
                             payout, dt, app_name, country_code, otp,
                         )
 
-                        # Build display message
                         display_text = sms_text(message, masked=True)
                         markup = message_buttons(msg_text, sms_id)
 
-                        # Send to group with animation
                         try:
                             await send_group_message(display_text, markup)
                             await mark_sent(conn, sms_id)
@@ -1049,23 +1125,28 @@ async def forward_loop(forward_event: asyncio.Event) -> None:
                             logger.error("Send failed: " + str(send_err))
                             continue
 
-                        if dt:
-                            await set_state(conn, "last_sms_dt", dt)
-
                         await asyncio.sleep(0.5)
 
-                last_error = None
+                    if newest_dt:
+                        try:
+                            dt_obj = datetime.strptime(
+                                newest_dt, "%Y-%m-%d %H:%M:%S"
+                            ) + timedelta(seconds=1)
+                            new_dt = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
+                        except Exception:
+                            new_dt = newest_dt
+                        await set_state(conn, "last_sms_dt", new_dt)
+                        logger.info("Advanced last_dt -> " + new_dt)
+
                 runtime_last_error = None
 
             except Exception as error:
-                last_error = str(error)
-                runtime_last_error = last_error
-                logger.error("Forward error: " + last_error)
+                runtime_last_error = str(error)
+                logger.error("Forward error: " + runtime_last_error)
 
             try:
                 await asyncio.wait_for(forward_event.wait(), timeout=POLL_SECONDS)
                 forward_event.clear()
-                logger.info("Manual trigger")
             except asyncio.TimeoutError:
                 pass
     finally:
@@ -1073,12 +1154,13 @@ async def forward_loop(forward_event: asyncio.Event) -> None:
 
 
 # ═══════════════════════════════════════════════════════
-# COMMAND LOOP
+# COMMAND LOOP (Owner-only commands, public buttons)
 # ═══════════════════════════════════════════════════════
 
 async def command_loop(forward_event: asyncio.Event) -> None:
     conn = await init_db()
     offset = int(await state_value(conn, "telegram_update_offset") or "0")
+    await load_blocked_users(conn)
 
     try:
         while True:
@@ -1093,30 +1175,28 @@ async def command_loop(forward_event: asyncio.Event) -> None:
                     chat = message.get("chat", {})
                     callback = update.get("callback_query")
 
-                    if callback:
-                        sender = callback.get("from", {})
-                    else:
-                        sender = message.get("from", {})
-
+                    sender = callback.get("from", {}) if callback else message.get("from", {})
+                    sender_id = sender.get("id")
                     text = str(message.get("text", ""))
 
-                    # ═══ OWNER ONLY ═══
-                    if sender.get("id") != TELEGRAM_OWNER_ID:
+                    # ═══ BLOCKED: silent ignore ═══
+                    if str(sender_id) in blocked_users:
                         continue
 
-                    # ═══ CALLBACK (button presses) ═══
+                    # ═══════════════════════════════════════════
+                    # BUTTONS — accessible by EVERYONE (group members)
+                    # ═══════════════════════════════════════════
                     if callback:
                         data = str(callback.get("data", ""))
                         callback_id = callback.get("id", "")
                         if not callback_id:
                             continue
 
-                        # ═══ FULL MESSAGE ═══
                         if data.startswith("full:"):
                             sms_id = data.split(":", 1)[1]
                             alert = await get_full_message_alert(conn, sms_id)
                             if not alert:
-                                alert = "❌ Message expired."
+                                alert = "\u274C Message expired."
                             try:
                                 await telegram_call("answerCallbackQuery", {
                                     "callback_query_id": callback_id,
@@ -1126,13 +1206,9 @@ async def command_loop(forward_event: asyncio.Event) -> None:
                             except Exception as e:
                                 logger.warning("Callback failed: " + str(e))
 
-                        # ═══ OTP (fallback) ═══
                         elif data.startswith("otp:"):
                             otp = data.split(":", 1)[1]
-                            if otp == "none":
-                                alert = "❌ No OTP found in this message."
-                            else:
-                                alert = "\U0001F4CB OTP: " + otp
+                            alert = "\u274C No OTP found." if otp == "none" else "\U0001F4CB OTP: " + otp
                             try:
                                 await telegram_call("answerCallbackQuery", {
                                     "callback_query_id": callback_id,
@@ -1141,10 +1217,43 @@ async def command_loop(forward_event: asyncio.Event) -> None:
                                 })
                             except Exception:
                                 pass
-
                         continue
 
-                    # ═══ OWNER PRIVATE COMMANDS ═══
+                    # ═══════════════════════════════════════════
+                    # COMMANDS — OWNER ONLY
+                    # ═══════════════════════════════════════════
+                    if not is_owner(sender_id):
+                        # Log + notify (rate-limited 60s)
+                        action = "cmd:" + text[:40]
+                        await log_intruder(
+                            conn, sender_id,
+                            sender.get("username", ""),
+                            sender.get("first_name", ""),
+                            action,
+                        )
+                        last_notify = await state_value(conn, "last_intrusion_notify")
+                        should_notify = True
+                        if last_notify:
+                            try:
+                                if (datetime.now(timezone.utc) -
+                                    datetime.fromisoformat(last_notify)).total_seconds() < 60:
+                                    should_notify = False
+                            except Exception:
+                                pass
+                        if should_notify:
+                            await notify_owner_intrusion(
+                                conn, sender_id,
+                                sender.get("username", ""),
+                                sender.get("first_name", ""),
+                                action,
+                            )
+                            await set_state(
+                                conn, "last_intrusion_notify",
+                                datetime.now(timezone.utc).isoformat()
+                            )
+                        continue
+
+                    # ═══ OWNER — private chat only ═══
                     if chat.get("type") != "private":
                         continue
 
@@ -1154,43 +1263,28 @@ async def command_loop(forward_event: asyncio.Event) -> None:
                         await telegram_call("sendMessage", {
                             "chat_id": chat["id"],
                             "text": (
-                                "\U0001F916 <b>SMS Forwarder Bot</b>\n"
-                                "\u2501" * 14 + "\n"
-                                "\u2705 <b>Online</b>\n\n"
-                                "\U0001F4E2 <b>Group:</b> <code>" +
-                                escape_html(TELEGRAM_GROUP_ID) + "</code>\n"
-                                "\U0001F464 <b>Owner:</b> <code>" +
-                                str(TELEGRAM_OWNER_ID) + "</code>\n\n"
-                                "\U0001F511 <b>Commands</b>\n"
-                                "\u2022 /status - Bot status\n"
-                                "\u2022 /stats - Statistics\n"
-                                "\u2022 /reset - Reset cursor\n"
-                                "\u2022 /forwardnow - Force poll\n"
-                                "\u2022 /cleanup - Delete old records\n"
-                                "\u2022 /addapi KEY - Add API\n"
-                                "\u2022 /remapi KEY - Remove API\n"
-                                "\u2022 /apilist - List APIs"
-                            ),
-                            "parse_mode": "HTML",
-                        })
-
-                    elif cmd == "/help":
-                        await telegram_call("sendMessage", {
-                            "chat_id": chat["id"],
-                            "text": (
-                                "\U0001F4CB <b>Commands</b>\n"
-                                "\u2501" * 14 + "\n"
-                                "\u2699 <b>Control</b>\n"
-                                "\u2022 /start\n"
-                                "\u2022 /status\n"
-                                "\u2022 /stats\n"
-                                "\u2022 /reset\n"
-                                "\u2022 /forwardnow\n"
-                                "\u2022 /cleanup\n\n"
-                                "\U0001F511 <b>API</b>\n"
-                                "\u2022 /addapi <code>KEY</code>\n"
-                                "\u2022 /remapi <code>KEY</code>\n"
-                                "\u2022 /apilist"
+                                E_CROWN + " <b>Owner Panel</b>\n" + DIVIDER + "\n"
+                                E_BOT + " <b>SMS Forwarder Bot v17</b>\n"
+                                E_GREEN + " <b>Status:</b> Online & Secured\n\n"
+                                E_USER + " <b>Owner:</b> <code>" + str(TELEGRAM_OWNER_ID) + "</code>\n"
+                                E_MEGA + " <b>Group:</b> <code>" + escape_html(TELEGRAM_GROUP_ID) + "</code>\n"
+                                E_CLOCK + " <b>PKT:</b> " + pkt_time() + "\n\n"
+                                E_KEY + " <b>Commands</b>\n"
+                                "\u2022 /status \u2014 Bot status\n"
+                                "\u2022 /stats \u2014 Statistics\n"
+                                "\u2022 /analytics \u2014 Deep insights\n"
+                                "\u2022 /export \u2014 CSV export\n"
+                                "\u2022 /reset \u2014 Reset cursor\n"
+                                "\u2022 /forwardnow \u2014 Force poll\n"
+                                "\u2022 /cleanup \u2014 Delete old\n"
+                                "\u2022 /addapi KEY \u2014 Add API\n"
+                                "\u2022 /remapi KEY \u2014 Remove API\n"
+                                "\u2022 /apilist \u2014 List APIs\n\n"
+                                E_SHIELD + " <b>Security</b>\n"
+                                "\u2022 /intruders \u2014 Access attempts\n"
+                                "\u2022 /blocked \u2014 Blocked list\n"
+                                "\u2022 /block ID \u2014 Block user\n"
+                                "\u2022 /unblock ID \u2014 Unblock"
                             ),
                             "parse_mode": "HTML",
                         })
@@ -1198,32 +1292,49 @@ async def command_loop(forward_event: asyncio.Event) -> None:
                     elif cmd == "/status":
                         status = await build_status_text(conn, runtime_last_error)
                         await telegram_call("sendMessage", {
-                            "chat_id": chat["id"],
-                            "text": status,
-                            "parse_mode": "HTML",
+                            "chat_id": chat["id"], "text": status, "parse_mode": "HTML",
                         })
 
                     elif cmd == "/stats":
-                        stats_text = await build_stats_text(conn)
+                        st = await build_stats_text(conn)
                         await telegram_call("sendMessage", {
-                            "chat_id": chat["id"],
-                            "text": stats_text,
-                            "parse_mode": "HTML",
+                            "chat_id": chat["id"], "text": st, "parse_mode": "HTML",
                         })
+
+                    elif cmd == "/analytics":
+                        an = await build_analytics_text(conn)
+                        await telegram_call("sendMessage", {
+                            "chat_id": chat["id"], "text": an, "parse_mode": "HTML",
+                        })
+
+                    elif cmd == "/export":
+                        csv_data = await export_csv(conn)
+                        if not csv_data:
+                            await telegram_call("sendMessage", {
+                                "chat_id": chat["id"], "text": "\u274C No data.",
+                            })
+                            continue
+                        try:
+                            await http_client.post(
+                                "https://api.telegram.org/bot" + BOT_TOKEN + "/sendDocument",
+                                data={"chat_id": chat["id"], "caption": "\U0001F4C1 SMS Export"},
+                                files={"document": ("sms_export.csv", csv_data, "text/csv")},
+                                timeout=60,
+                            )
+                        except Exception as e:
+                            logger.error("Export failed: " + str(e))
 
                     elif cmd == "/reset":
                         await set_state(conn, "last_sms_dt", "")
                         await telegram_call("sendMessage", {
                             "chat_id": chat["id"],
-                            "text": "\u2705 <b>Reset done</b>\nBot will re-fetch all.",
+                            "text": "\u2705 Reset done. Bot re-fetch karega.",
                             "parse_mode": "HTML",
                         })
 
                     elif cmd == "/forwardnow":
                         await telegram_call("sendMessage", {
-                            "chat_id": chat["id"],
-                            "text": "\U0001F680 <b>Triggered</b>",
-                            "parse_mode": "HTML",
+                            "chat_id": chat["id"], "text": "\U0001F680 Triggered",
                         })
                         forward_event.set()
 
@@ -1231,9 +1342,7 @@ async def command_loop(forward_event: asyncio.Event) -> None:
                         deleted = await cleanup_old_records(conn, CLEANUP_DAYS)
                         await telegram_call("sendMessage", {
                             "chat_id": chat["id"],
-                            "text": "\U0001F9F9 <b>Cleaned:</b> " + str(deleted) +
-                                    " records (> " + str(CLEANUP_DAYS) + "d)",
-                            "parse_mode": "HTML",
+                            "text": "\U0001F9F9 Cleaned: " + str(deleted) + " records",
                         })
 
                     elif cmd == "/addapi":
@@ -1241,8 +1350,7 @@ async def command_loop(forward_event: asyncio.Event) -> None:
                         if len(parts) < 2:
                             await telegram_call("sendMessage", {
                                 "chat_id": chat["id"],
-                                "text": "\u274C <b>Usage:</b>\n<code>/addapi YOUR_KEY</code>",
-                                "parse_mode": "HTML",
+                                "text": "\u274C Usage: /addapi YOUR_KEY",
                             })
                             continue
                         api_key = parts[1]
@@ -1250,73 +1358,89 @@ async def command_loop(forward_event: asyncio.Event) -> None:
                             await load_api_keys(conn)
                             await telegram_call("sendMessage", {
                                 "chat_id": chat["id"],
-                                "text": (
-                                    "\u2705 <b>API Added</b>\n"
-                                    "\U0001F511 <code>" +
-                                    escape_html(api_key[:20]) + "...</code>"
-                                ),
+                                "text": "\u2705 API Added: <code>" + escape_html(api_key[:20]) + "...</code>",
                                 "parse_mode": "HTML",
                             })
                         else:
                             await telegram_call("sendMessage", {
-                                "chat_id": chat["id"],
-                                "text": "\u274C API key already exists.",
+                                "chat_id": chat["id"], "text": "\u274C Already exists.",
                             })
 
                     elif cmd == "/remapi":
                         parts = text.strip().split()
                         if len(parts) < 2:
-                            await telegram_call("sendMessage", {
-                                "chat_id": chat["id"],
-                                "text": "\u274C <b>Usage:</b>\n<code>/remapi YOUR_KEY</code>",
-                                "parse_mode": "HTML",
-                            })
                             continue
-                        api_key = parts[1]
-                        if await remove_api_key(conn, api_key):
+                        if await remove_api_key(conn, parts[1]):
                             await load_api_keys(conn)
                             await telegram_call("sendMessage", {
-                                "chat_id": chat["id"],
-                                "text": (
-                                    "\u2705 <b>API Removed</b>\n"
-                                    "\U0001F511 <code>" +
-                                    escape_html(api_key[:20]) + "...</code>"
-                                ),
-                                "parse_mode": "HTML",
-                            })
-                        else:
-                            await telegram_call("sendMessage", {
-                                "chat_id": chat["id"],
-                                "text": "\u274C API key not found.",
+                                "chat_id": chat["id"], "text": "\u2705 API Removed",
                             })
 
                     elif cmd == "/apilist":
                         keys = await get_all_api_keys(conn)
-                        if not keys:
+                        cur = get_current_api_key()
+                        lines = [E_KEY + " <b>API Keys</b>", DIVIDER]
+                        for k in keys:
+                            mark = E_GREEN + " ACTIVE" if k["api_key"] == cur else E_GLOBE + " standby"
+                            lines.append(mark + " <code>" + escape_html(k["api_key"][:20]) + "...</code>")
+                        await telegram_call("sendMessage", {
+                            "chat_id": chat["id"], "text": "\n".join(lines), "parse_mode": "HTML",
+                        })
+
+                    elif cmd == "/intruders":
+                        rows = await get_intruders(conn, 20)
+                        if not rows:
+                            txt = E_GREEN + " No intruders. Bot secure."
+                        else:
+                            lines = ["\U0001F6A8 <b>Recent Intruders</b>", DIV_SHORT]
+                            for r in rows[:15]:
+                                lines.append(
+                                    E_USER + " <code>" + str(r["user_id"]) + "</code>\n"
+                                    "   @" + escape_html(r.get("username") or "N/A") + "\n"
+                                    "   \u26A1 <code>" + escape_html(str(r.get("action"))[:40]) + "</code>"
+                                )
+                            txt = "\n".join(lines)
+                        await telegram_call("sendMessage", {
+                            "chat_id": chat["id"], "text": txt, "parse_mode": "HTML",
+                        })
+
+                    elif cmd == "/blocked":
+                        rows = await get_blocked_list(conn)
+                        if not rows:
+                            txt = E_GREEN + " No blocked users."
+                        else:
+                            lines = ["\U0001F6AB <b>Blocked Users</b>", DIV_SHORT]
+                            for r in rows[:20]:
+                                lines.append(E_USER + " <code>" + str(r["user_id"]) + "</code>")
+                            txt = "\n".join(lines)
+                        await telegram_call("sendMessage", {
+                            "chat_id": chat["id"], "text": txt, "parse_mode": "HTML",
+                        })
+
+                    elif cmd == "/block":
+                        parts = text.strip().split()
+                        if len(parts) < 2:
+                            continue
+                        target = parts[1].strip()
+                        if is_owner(target):
+                            continue
+                        if await block_user(conn, target):
                             await telegram_call("sendMessage", {
                                 "chat_id": chat["id"],
-                                "text": "\U0001F4CB No API keys stored.",
+                                "text": "\U0001F6AB Blocked: <code>" + escape_html(target) + "</code>",
+                                "parse_mode": "HTML",
                             })
+
+                    elif cmd == "/unblock":
+                        parts = text.strip().split()
+                        if len(parts) < 2:
                             continue
-                        current_key = get_current_api_key()
-                        lines = [
-                            "\U0001F511 <b>API Keys</b>",
-                            "\u2501" * 14,
-                        ]
-                        for k in keys:
-                            if k["api_key"] == current_key:
-                                mark = "\U0001F7E2 <b>ACTIVE</b>"
-                            else:
-                                mark = "\U0001F310 standby"
-                            lines.append(
-                                mark + "\n   <code>" +
-                                escape_html(k["api_key"][:20]) + "...</code>"
-                            )
-                        await telegram_call("sendMessage", {
-                            "chat_id": chat["id"],
-                            "text": "\n".join(lines),
-                            "parse_mode": "HTML",
-                        })
+                        if await unblock_user(conn, parts[1].strip()):
+                            await telegram_call("sendMessage", {
+                                "chat_id": chat["id"],
+                                "text": "\u2705 Unblocked: <code>" + escape_html(parts[1]) + "</code>",
+                                "parse_mode": "HTML",
+                            })
 
             except Exception as error:
                 logger.error("Command error: " + str(error))
@@ -1327,23 +1451,18 @@ async def command_loop(forward_event: asyncio.Event) -> None:
 
 
 # ═══════════════════════════════════════════════════════
-# STATUS BUILDERS
+# STATUS / ANALYTICS / EXPORT BUILDERS
 # ═══════════════════════════════════════════════════════
 
 async def build_status_text(conn, last_error):
-    """Full status card"""
-    if last_error:
-        state_icon = E_RED
-        state_label = "Error"
-    else:
-        state_icon = E_GREEN
-        state_label = "Running"
-
+    state_icon = E_GREEN if not last_error else E_RED
+    state_label = "Running" if not last_error else "Error"
     err_label = last_error or "none"
     active_key = get_current_api_key()[:20]
     last_dt = await state_value(conn, "last_sms_dt") or "-"
-    now_label = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    now_label = pkt_time()
     api_count = len(api_keys)
+
     total_msgs = 0
     try:
         async with conn.execute(
@@ -1353,7 +1472,7 @@ async def build_status_text(conn, last_error):
     except Exception:
         pass
 
-    lines = [
+    return "\n".join([
         E_CHART + " <b>Bot Status</b>",
         DIVIDER,
         state_icon + " <b>State:</b> " + state_label,
@@ -1361,17 +1480,15 @@ async def build_status_text(conn, last_error):
         E_OLDKEY + " <b>Active:</b> <code>" + escape_html(active_key) + "...</code>",
         E_MEGA + " <b>Group:</b> <code>" + escape_html(TELEGRAM_GROUP_ID) + "</code>",
         E_CLOCK + " <b>Poll:</b> " + str(POLL_SECONDS) + "s",
-        E_CAL + " <b>Last DT:</b> <code>" + escape_html(last_dt) + "</code>",
+        E_TIME + " <b>Last DT:</b> <code>" + escape_html(last_dt) + "</code>",
         E_OUT + " <b>Forwarded:</b> " + str(total_msgs),
         E_USER + " <b>Owner:</b> <code>" + str(TELEGRAM_OWNER_ID) + "</code>",
-        E_BOLT + " <b>Now:</b> " + now_label + " UTC",
+        E_CLOCK + " <b>Now:</b> " + now_label + " PKT",
         E_CROSS + " <b>Error:</b> <code>" + escape_html(err_label) + "</code>",
-    ]
-    return "\n".join(lines)
+    ])
 
 
 async def build_stats_text(conn):
-    """Full statistics card"""
     try:
         db_stats = await get_db_stats(conn)
     except Exception:
@@ -1393,12 +1510,110 @@ async def build_stats_text(conn):
         for row in by_app[:5]:
             app = row.get("app") or "unknown"
             logo = APP_LOGOS.get(app, APP_LOGOS["default"])
-            cnt = row.get("c", 0)
-            lines.append("   " + logo + " " + app.upper() + ": <b>" + str(cnt) + "</b>")
+            lines.append("   " + logo + " " + str(app).upper() + ": <b>" + str(row.get("c", 0)) + "</b>")
 
     lines.append("")
     lines.append(E_DB + " <code>" + escape_html(DATABASE_FILE) + "</code>")
     return "\n".join(lines)
+
+
+async def build_analytics_text(conn):
+    try:
+        async with conn.execute(
+            "SELECT COUNT(*) AS c FROM forwarded_messages WHERE sent_at IS NOT NULL"
+        ) as c:
+            total_sent = (await c.fetchone())["c"]
+
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        async with conn.execute(
+            "SELECT COUNT(*) AS c FROM forwarded_messages "
+            "WHERE sent_at IS NOT NULL AND dt LIKE ?", (today + "%",)
+        ) as c:
+            today_sent = (await c.fetchone())["c"]
+
+        async with conn.execute(
+            "SELECT country, COUNT(*) AS c FROM forwarded_messages "
+            "WHERE sent_at IS NOT NULL AND country IS NOT NULL "
+            "GROUP BY country ORDER BY c DESC LIMIT 5"
+        ) as c:
+            countries = await c.fetchall()
+
+        async with conn.execute(
+            "SELECT COALESCE(app,'unknown') AS app, COUNT(*) AS c "
+            "FROM forwarded_messages WHERE sent_at IS NOT NULL "
+            "GROUP BY COALESCE(app,'unknown') ORDER BY c DESC LIMIT 5"
+        ) as c:
+            apps = await c.fetchall()
+
+        async with conn.execute(
+            "SELECT COUNT(*) AS c FROM forwarded_messages "
+            "WHERE sent_at IS NOT NULL AND otp != 'N/A' AND otp IS NOT NULL"
+        ) as c:
+            otp_count = (await c.fetchone())["c"]
+
+        try:
+            async with conn.execute("SELECT COUNT(*) AS c FROM intruders") as c:
+                intruder_count = (await c.fetchone())["c"]
+        except Exception:
+            intruder_count = 0
+
+        lines = [
+            E_CHART + " <b>Analytics</b>",
+            DIVIDER,
+            E_OUT + " <b>Total:</b> " + str(total_sent),
+            E_CAL + " <b>Today:</b> " + str(today_sent),
+            E_KEY + " <b>OTPs:</b> " + str(otp_count),
+            "\U0001F6A8 <b>Intruders:</b> " + str(intruder_count),
+            "",
+            E_GLOBE + " <b>Top Countries:</b>",
+        ]
+        if countries:
+            for row in countries:
+                code = row["country"] or "UNKNOWN"
+                flag, name = COUNTRIES.get(code, (E_GLOBE, code))
+                lines.append("   " + flag + " " + name + ": <b>" + str(row["c"]) + "</b>")
+        else:
+            lines.append("   <i>None</i>")
+
+        lines.append("")
+        lines.append(E_MSG + " <b>Top Apps:</b>")
+        if apps:
+            for row in apps:
+                app = row["app"] or "unknown"
+                logo = APP_LOGOS.get(app, APP_LOGOS["default"])
+                lines.append("   " + logo + " " + str(app).upper() + ": <b>" + str(row["c"]) + "</b>")
+        else:
+            lines.append("   <i>None</i>")
+
+        return "\n".join(lines)
+    except Exception as e:
+        return "\u274C Analytics error: " + str(e)
+
+
+async def export_csv(conn):
+    try:
+        async with conn.execute(
+            "SELECT dt, raw_num, country, app, otp, payout, message_text "
+            "FROM forwarded_messages WHERE sent_at IS NOT NULL "
+            "ORDER BY dt DESC LIMIT 5000"
+        ) as c:
+            rows = await c.fetchall()
+        if not rows:
+            return None
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["Date/Time", "Number", "Country", "App", "OTP", "Payout", "Message"])
+        for r in rows:
+            writer.writerow([
+                r["dt"] or "", r["raw_num"] or "", r["country"] or "",
+                r["app"] or "", r["otp"] or "", r["payout"] or "",
+                (r["message_text"] or "").replace("\n", " "),
+            ])
+        return output.getvalue().encode("utf-8")
+    except Exception as e:
+        logger.error("CSV export error: " + str(e))
+        return None
 
 
 # ═══════════════════════════════════════════════════════
@@ -1420,8 +1635,7 @@ async def main() -> None:
     global http_client
 
     print("=" * 60)
-    print("Ultra SMS -> Telegram Forwarder Bot v13")
-    print("Smart OTP + App Detection + Country Flags")
+    print("Ultra SMS -> Telegram Forwarder Bot v17 - Premium")
     print("=" * 60)
 
     forward_event = asyncio.Event()
@@ -1433,20 +1647,33 @@ async def main() -> None:
     conn = await init_db()
     try:
         await load_api_keys(conn)
+        await load_blocked_users(conn)
         await load_bot_username()
         last_dt = await state_value(conn, "last_sms_dt")
 
         logger.info("Bot: @" + BOT_USERNAME)
-        logger.info("Button bot: @" + BUTTON_BOT_USERNAME)
-        logger.info("Group: " + TELEGRAM_GROUP_ID)
-        logger.info("Channel: " + TELEGRAM_CHANNEL_URL)
         logger.info("Owner: " + str(TELEGRAM_OWNER_ID))
+        logger.info("Group: " + TELEGRAM_GROUP_ID)
         logger.info("Last DT: " + (last_dt or "None"))
-        logger.info("Poll: " + str(POLL_SECONDS) + "s | Batch: " + str(MAX_RECORDS))
         logger.info("APIs: " + str(len(api_keys)))
         logger.info("=" * 60)
-        logger.info("Started")
+        logger.info("Started - Owner-Only Commands, Public Buttons")
         logger.info("=" * 60)
+
+        try:
+            await telegram_call("sendMessage", {
+                "chat_id": TELEGRAM_OWNER_ID,
+                "text": (
+                    E_CROWN + " <b>Bot Started</b>\n" + DIV_SHORT + "\n"
+                    E_GREEN + " <b>Status:</b> Online\n"
+                    "\U0001F510 <b>Mode:</b> Owner-Only Commands\n"
+                    E_MEGA + " <b>Group:</b> Buttons public\n"
+                    E_CLOCK + " <b>PKT:</b> " + pkt_time()
+                ),
+                "parse_mode": "HTML",
+            })
+        except Exception as e:
+            logger.warning("Startup msg failed: " + str(e))
 
         await asyncio.gather(
             forward_loop(forward_event),
