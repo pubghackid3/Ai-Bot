@@ -1,12 +1,27 @@
+#!/usr/bin/env python3
 # ==========================================================
-#   🚀 ULTIMATE TELEGRAM BOT — ALL FEATURES
-#   Features: Multi-Lang, Force-Join, Points Referral, Unique Accounts,
-#   Unlimited Accounts, Per-Account Links, Free Order, Trial, Coupons,
-#   Tickets, Multi-Owner, Queue, Anti-Flood, Reminder, Analytics,
-#   Auto Backup, Animations, Beautiful Welcome
+#   🚀 ULTIMATE TELEGRAM BOT — SINGLE FILE (AUTO-INSTALL)
 # ==========================================================
-import asyncio, os, io, csv, sqlite3, datetime, logging, time, random
+import sys, subprocess, importlib, os
+
+# ---------- AUTO-INSTALL DEPENDENCIES ----------
+REQUIRED = {
+    "aiogram": "aiogram==3.7.0",
+    "telethon": "telethon==1.36.0",
+    "cryptography": "cryptography==42.0.8",
+}
+for mod, pkg in REQUIRED.items():
+    try: importlib.import_module(mod)
+    except ImportError:
+        print(f"📦 Installing {pkg} ...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", pkg, "-q"])
+
+# ==========================================================
+#                    IMPORTS
+# ==========================================================
+import asyncio, io, csv, sqlite3, datetime, logging, time
 from aiogram import Bot, Dispatcher, F, types, BaseMiddleware
+from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -24,62 +39,48 @@ from cryptography.fernet import Fernet
 # ==========================================================
 #                    ⚙️ CONFIG
 # ==========================================================
-BOT_TOKEN        = "8781096796:AAGGfb-DLH1oH7YkdnqVxJKfnNL2EPsEf5o"
-API_ID           = 30217812
-API_HASH         = "d21066a90786cf2dd348b907ece69d24"
-OWNER_ID         = 8762845215
-OWNER_GROUP_ID   = -1003975078444
-CUSTOMER_SERVICE = "Ghost_Code_404"
+BOT_TOKEN        = os.getenv("BOT_TOKEN", "8781096796:AAGGfb-DLH1oH7YkdnqVxJKfnNL2EPsEf5o")
+API_ID           = int(os.getenv("API_ID", "30217812"))
+API_HASH         = os.getenv("API_HASH", "d21066a90786cf2dd348b907ece69d24")
+OWNER_ID         = int(os.getenv("OWNER_ID", "8762845215"))
+OWNER_GROUP_ID   = int(os.getenv("OWNER_GROUP_ID", "-1003975078444"))
+CUSTOMER_SERVICE = os.getenv("CUSTOMER_SERVICE", "YourSupport").lstrip("@")
 
-# 🔒 Force Join — apna channel username yahan daalein
-# Multiple: ["@ch1","@ch2"]  |  Private: [-1001234567890]
-FORCE_CHANNELS   = ["@ToolsByRehan"]
+FORCE_CHANNELS   = ["@YourChannelUsername"]        # ← apna channel
 
-MAX_ACCOUNTS_PER_USER   = 99999        # unlimited
 DEFAULT_DELIVERY        = "24 to 48 hours"
 DEFAULT_MEMBERS_PER_ACC = 5
 REFERRAL_POINTS         = 100
 POINTS_PER_MEMBER       = 2
+TRIAL_MEMBERS           = 5
+TRIAL_ENABLED           = True
+BACKUP_HOUR_UTC         = 3
+FLOOD_LIMIT, FLOOD_WINDOW, FLOOD_MUTE_TIME = 8, 10, 300
 
-# Multi-owner (runtime populate hote hain)
-OWNER_IDS = [OWNER_ID]
-HELPERS   = []
-VIP_USERS = {}
+OWNER_IDS = [OWNER_ID]; HELPERS = []
+FLOOD_CACHE: dict = {}; FLOOD_MUTED: dict = {}
 
-# Anti-Flood
-FLOOD_LIMIT     = 8
-FLOOD_WINDOW    = 10
-FLOOD_MUTE_TIME = 300
-FLOOD_CACHE: dict = {}
-FLOOD_MUTED: dict = {}
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 
-# Backup
-BACKUP_HOUR_UTC = 3
-
-# Trial
-TRIAL_MEMBERS = 5
-TRIAL_ENABLED = True
-
-# VIP
-VIP_DISCOUNT = 20
-
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s | %(levelname)s | %(message)s")
-
-# ---------- Fernet key ----------
-KEY_FILE = ".fernet_key"
-if os.path.exists(KEY_FILE):
-    with open(KEY_FILE, "rb") as f: FERNET_KEY = f.read().strip()
+# ---------- Fernet ----------
+_env = os.getenv("FERNET_KEY")
+if _env: FERNET_KEY = _env.encode()
 else:
-    FERNET_KEY = Fernet.generate_key()
-    with open(KEY_FILE, "wb") as f: f.write(FERNET_KEY)
+    _kf = ".fernet_key"
+    if os.path.exists(_kf):
+        FERNET_KEY = open(_kf, "rb").read().strip()
+    else:
+        FERNET_KEY = Fernet.generate_key()
+        try: open(_kf, "wb").write(FERNET_KEY)
+        except Exception: pass
+        logging.warning(f"FERNET_KEY (save in env!): {FERNET_KEY.decode()}")
 cipher = Fernet(FERNET_KEY)
 
-bot = Bot(BOT_TOKEN, parse_mode="HTML")
+# ---------- Bot ----------
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp  = Dispatcher(storage=MemoryStorage())
 CLIENTS: dict = {}
 
-# ---------- Animation frames ----------
 SPINNER  = ["🕐","🕑","🕒","🕓","🕔","🕕","🕖","🕗","🕘","🕙","🕚","🕛"]
 PROGRESS = ["░░░░░░░░░░","█░░░░░░░░░","██░░░░░░░░","███░░░░░░░",
             "████░░░░░░","█████░░░░░","██████░░░░","███████░░░",
@@ -88,300 +89,218 @@ PROGRESS = ["░░░░░░░░░░","█░░░░░░░░░","�
 # ==========================================================
 #                    🌐 TRANSLATIONS
 # ==========================================================
-WELCOME_EN = (
-    "╔══════════════════════════╗\n"
-    "║   ✨  𝐖 𝐄 𝐋 𝐂 𝐎 𝐌 𝐄  ✨   ║\n"
-    "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n"
-    "╚══════════════════════════╝\n\n"
-    "👋 <b>Hello</b>, <i>{name}</i>!\n"
-    "🎯 <b>Your Telegram Manager Bot</b>\n\n"
-    "━━━━━━━━━━━━━━━━━━━━━━\n"
-    "💎 Link unlimited accounts\n"
-    "🎯 Set targets easily\n"
-    "💰 Earn points via referral\n"
-    "🎁 Get free members\n"
-    "🌐 5 languages supported\n"
-    "━━━━━━━━━━━━━━━━━━━━━━\n"
-    "✨ Let's get started! 👇"
-)
-WELCOME_UR = (
-    "╔══════════════════════════╗\n"
-    "║   ✨  𝐗𝐎𝐒𝐇 𝐀𝐀𝐌𝐃𝐄𝐄𝐃  ✨   ║\n"
-    "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n"
-    "╚══════════════════════════╝\n\n"
-    "👋 <b>السلام علیکم</b>، <i>{name}</i>!\n"
-    "🎯 <b>آپ کا ٹیلیگرام منیجر بوٹ</b>\n\n"
-    "━━━━━━━━━━━━━━━━━━━━━━\n"
-    "💎 لا محدود اکاؤنٹس\n"
-    "🎯 آسان ٹارگٹ سیٹنگ\n"
-    "💰 ریفرل سے پوائنٹس\n"
-    "🎁 فری ممبرز\n"
-    "🌐 5 زبانیں\n"
-    "━━━━━━━━━━━━━━━━━━━━━━\n"
-    "✨ چلیے شروع کریں! 👇"
-)
-WELCOME_HI = (
-    "╔══════════════════════════╗\n"
-    "║   ✨  𝐒𝐖𝐀𝐆𝐀𝐓 𝐇𝐀𝐈  ✨   ║\n"
-    "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n"
-    "╚══════════════════════════╝\n\n"
-    "👋 <b>नमस्ते</b>, <i>{name}</i>!\n"
-    "🎯 <b>आपका टेलीग्राम मैनेजर बॉट</b>\n\n"
-    "━━━━━━━━━━━━━━━━━━━━━━\n"
-    "💎 असीमित अकाउंट\n"
-    "🎯 आसान टार्गेट\n"
-    "💰 रेफरल से पॉइंट्स\n"
-    "🎁 फ्री मेंबर\n"
-    "🌐 5 भाषाएं\n"
-    "━━━━━━━━━━━━━━━━━━━━━━\n"
-    "✨ चलिए शुरू करें! 👇"
-)
-WELCOME_RU = (
-    "╔══════════════════════════╗\n"
-    "║   ✨  𝐊𝐇𝐔𝐒𝐇 𝐀𝐀𝐌𝐃𝐄𝐄𝐃  ✨   ║\n"
-    "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n"
-    "╚══════════════════════════╝\n\n"
-    "👋 <b>Assalam-o-Alaikum</b>, <i>{name}</i>!\n"
-    "🎯 <b>Aap ka Telegram Manager Bot</b>\n\n"
-    "━━━━━━━━━━━━━━━━━━━━━━\n"
-    "💎 Unlimited accounts\n"
-    "🎯 Aasan target\n"
-    "💰 Referral points\n"
-    "🎁 Free members\n"
-    "🌐 5 zabanain\n"
-    "━━━━━━━━━━━━━━━━━━━━━━\n"
-    "✨ Chalein shuru karein! 👇"
-)
-WELCOME_AR = (
-    "╔══════════════════════════╗\n"
-    "║   ✨  𝐖 𝐄 𝐋 𝐂 𝐎 𝐌 𝐄  ✨   ║\n"
-    "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n"
-    "╚══════════════════════════╝\n\n"
-    "👋 <b>مرحباً</b>، <i>{name}</i>!\n"
-    "🎯 <b>بوت إدارة تيليجرام</b>\n\n"
-    "━━━━━━━━━━━━━━━━━━━━━━\n"
-    "💎 اربط حسابات\n"
-    "🎯 عيّن الأهداف\n"
-    "💰 نقاط الإحالة\n"
-    "🎁 أعضاء مجاناً\n"
-    "🌐 5 لغات\n"
-    "━━━━━━━━━━━━━━━━━━━━━━\n"
-    "✨ هيّا نبدأ! 👇"
-)
+WELCOME = {
+"en": ("╔══════════════════════════╗\n║   ✨  𝐖 𝐄 𝐋 𝐂 𝐎 𝐌 𝐄  ✨   ║\n"
+       "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n╚══════════════════════════╝\n\n"
+       "👋 <b>Hello</b>, <i>{name}</i>!\n🎯 <b>Your Telegram Manager Bot</b>\n\n"
+       "━━━━━━━━━━━━━━━━━━━━━━\n💎 Link unlimited accounts\n🎯 Set targets easily\n"
+       "💰 Earn points via referral\n🎁 Get free members\n🌐 5 languages supported\n"
+       "━━━━━━━━━━━━━━━━━━━━━━\n✨ Let's get started! 👇"),
+"ur": ("╔══════════════════════════╗\n║   ✨  𝐗𝐎𝐒𝐇 𝐀𝐀𝐌𝐃𝐄𝐄𝐃  ✨   ║\n"
+       "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n╚══════════════════════════╝\n\n"
+       "👋 <b>السلام علیکم</b>، <i>{name}</i>!\n🎯 <b>آپ کا ٹیلیگرام منیجر بوٹ</b>\n\n"
+       "━━━━━━━━━━━━━━━━━━━━━━\n💎 لا محدود اکاؤنٹس\n🎯 آسان ٹارگٹ سیٹنگ\n"
+       "💰 ریفرل سے پوائنٹس\n🎁 فری ممبرز\n🌐 5 زبانیں\n"
+       "━━━━━━━━━━━━━━━━━━━━━━\n✨ چلیے شروع کریں! 👇"),
+"hi": ("╔══════════════════════════╗\n║   ✨  𝐒𝐖𝐀𝐆𝐀𝐓 𝐇𝐀𝐈  ✨   ║\n"
+       "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n╚══════════════════════════╝\n\n"
+       "👋 <b>नमस्ते</b>, <i>{name}</i>!\n🎯 <b>आपका टेलीग्राम मैनेजर बॉट</b>\n\n"
+       "━━━━━━━━━━━━━━━━━━━━━━\n💎 असीमित अकाउंट\n🎯 आसान टार्गेट\n"
+       "💰 रेफरल पॉइंट्स\n🎁 फ्री मेंबर\n🌐 5 भाषाएं\n"
+       "━━━━━━━━━━━━━━━━━━━━━━\n✨ चलिए शुरू करें! 👇"),
+"roman_ur": ("╔══════════════════════════╗\n║   ✨  𝐊𝐇𝐔𝐒𝐇 𝐀𝐀𝐌𝐃𝐄𝐄𝐃  ✨   ║\n"
+       "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n╚══════════════════════════╝\n\n"
+       "👋 <b>Assalam-o-Alaikum</b>, <i>{name}</i>!\n🎯 <b>Aap ka Telegram Manager Bot</b>\n\n"
+       "━━━━━━━━━━━━━━━━━━━━━━\n💎 Unlimited accounts\n🎯 Aasan target\n"
+       "💰 Referral points\n🎁 Free members\n🌐 5 zabanain\n"
+       "━━━━━━━━━━━━━━━━━━━━━━\n✨ Chalein shuru karein! 👇"),
+"ar": ("╔══════════════════════════╗\n║   ✨  𝐖 𝐄 𝐋 𝐂 𝐎 𝐌 𝐄  ✨   ║\n"
+       "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n╚══════════════════════════╝\n\n"
+       "👋 <b>مرحباً</b>، <i>{name}</i>!\n🎯 <b>بوت إدارة تيليجرام</b>\n\n"
+       "━━━━━━━━━━━━━━━━━━━━━━\n💎 اربط حسابات\n🎯 عيّن الأهداف\n"
+       "💰 نقاط الإحالة\n🎁 أعضاء مجاناً\n🌐 5 لغات\n"
+       "━━━━━━━━━━━━━━━━━━━━━━\n✨ هيّا نبدأ! 👇"),
+}
 
 TEXTS = {
 "en": {
-    "welcome": WELCOME_EN,
-    "menu_title": "🏠 <b>𝐌𝐀𝐈𝐍 𝐌𝐄𝐍𝐔</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👇 <i>Choose an option below</i>",
-    "choose_language": "🌐 <b>𝐒𝐄𝐋𝐄𝐂𝐓 𝐋𝐀𝐍𝐆𝐔𝐀𝐆𝐄</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👇 <i>Choose your language:</i>",
-    "language_set": "✨ <b>𝐋𝐚𝐧𝐠𝐮𝐚𝐠𝐞 𝐒𝐞𝐭</b> ✨\n━━━━━━━━━━━━━━━━━━━━━━\n\n✅ Now: <b>🇬🇧 English</b>\n💡 Change anytime: 🌐",
-    "btn_add":"➕  Add Account","btn_my":"📊  My Accounts","btn_submit":"📦  Submit Order",
-    "btn_members":"👥  Members","btn_history":"📜  History","btn_refer":"🎁  Refer & Earn",
-    "btn_ticket":"🎫  Support","btn_support":"🛎  Customer Service","btn_lang":"🌐  Language",
-    "btn_help":"❓  Help","btn_menu":"🏠  Menu","btn_cancel":"❌  Cancel","btn_back":"🔙  Back",
-    "btn_free":"💎  Free Order","btn_points":"💰  My Points","btn_trial":"🎁  Free Trial (5)",
-    "btn_coupon":"🎟  Redeem Coupon",
-    "add_title":"➕ <b>ADD ACCOUNT</b>",
-    "add_guide":"📖 Send your Telegram phone number.\n\n✍️ Example: <code>+923001234567</code>\n\n⚠️ Text only. Each number once.",
-    "otp_guide":"📩 <b>Code sent!</b>\n\n✍️ Enter the code.",
-    "pwd_guide":"🔐 <b>2FA Password needed</b>\n\n✍️ Send password.",
-    "linked_ok":"✅ <b>Account Added</b>\n\n📱 <code>{phone}</code>",
-    "phone_used":"❌ <b>Number Already Linked</b>\n\n<code>{phone}</code>",
-    "target_title":"🎯 <b>SET TARGET</b>","target_guide":"📖 <code>https://t.me/yourgroup</code>",
-    "target_saved":"✅ <b>Saved</b>\n🎯 {link}",
-    "own_title":"🏠 <b>YOUR GROUP</b>","own_guide":"📖 <code>https://t.me/mygroups</code>",
-    "own_saved":"✅ <b>Saved</b>\n🏠 {link}",
-    "my_title":"📊 <b>MY ACCOUNTS</b>","no_accounts":"❌ No accounts yet.",
-    "submit_title":"📦 <b>SUBMIT ORDER</b>","submit_no_acc":"❌ No accounts.",
-    "submit_incomplete":"⚠️ <b>Not Ready</b>\n\nSome accounts need target.",
-    "history_title":"📜 <b>HISTORY</b>","history_empty":"❌ No orders.",
-    "status_pending":"⏳ Pending","status_process":"🔄 Processing",
-    "status_complete":"✅ Complete","status_rejected":"❌ Rejected",
-    "members_title":"👥 <b>MEMBER INFO</b>",
-    "members_body":"📊 <b>Rates:</b>\n• Paid: <b>1 acc = {rate} members</b>\n• Free: <b>{ppm} points = 1 member</b>\n\n📱 Accounts: <b>{accounts}</b>\n💰 Points: <b>{points}</b>",
-    "help_title":"❓ <b>HELP</b>",
-    "help_body":"📖 <b>Steps:</b>\n1️⃣ Add Account\n2️⃣ Set target & own\n3️⃣ Submit Order\n\n💎 <b>Free via points:</b>\n🎁 Refer → +100 points\n💎 2 points = 1 member\n\n🎟 Redeem coupons!\n\n🛎 @{support}",
-    "invalid_link":"❌ Invalid link.","invalid_phone":"❌ Invalid number.",
-    "cancelled":"❌ <b>Cancelled</b>","banned":"🚫 Banned","rate_limited":"⏳ Slow down.",
-    "ref_title":"🎁 <b>REFER & EARN</b>",
-    "ref_body":"🔗 <code>{link}</code>\n\n💰 Points: <b>{points}</b>\n👥 Referrals: <b>{refs}</b>\n\n💡 Friend links 1st account → <b>+{reward} points</b>\n💎 {ppm} points = 1 member",
-    "ref_reward":"🎉 <b>+{pts} Points!</b>\n\n{name} linked first account.\n💰 Total: <b>{total}</b>",
-    "new_ref_notice":"👋 Welcome! Your referrer gets <b>{pts} pts</b> after you link 1st account.",
-    "points_title":"💰 <b>MY POINTS</b>",
-    "points_body":"💰 Points: <b>{points}</b>\n💎 {ppm} pts = 1 member\n👥 Can order: <b>{members} members</b>\n\n🎁 Refer to earn more!",
-    "free_title":"💎 <b>FREE ORDER</b>",
-    "free_intro":"📖 Send <b>target group link</b>:",
-    "free_own":"✅ Now send <b>your own group link</b>:",
-    "free_amount":"✅ How many members?\n💎 {ppm} pts/member\n💰 Your: <b>{points}</b>\n\n✍️ Example: <code>25</code>",
-    "free_no_points":"❌ <b>Not Enough Points</b>\n💰 You: {points}\n💎 Need: {need}",
-    "free_invalid_num":"❌ Send a number ≥ 1.",
-    "free_confirm":"💎 <b>CONFIRM</b>\n\n👥 Members: <b>{members}</b>\n💰 Cost: <b>{cost} pts</b>\n💰 Remaining: <b>{remaining}</b>\n🎯 {target}\n🏠 {own}\n\nConfirm?",
-    "free_done":"🎉 <b>Order Sent!</b>\n👥 {members}\n💰 {cost} pts\n💰 Left: {remaining}\n⏱ {time}",
-    "btn_confirm":"✅  Confirm","btn_edit":"✏️  Cancel",
-    "ticket_title":"🎫 <b>SUPPORT TICKET</b>","ticket_guide":"✍️ Describe issue.",
-    "ticket_sent":"✅ Ticket <b>#{id}</b> sent.",
-    "coupon_prompt":"🎟 <b>REDEEM COUPON</b>\n\n✍️ <code>/redeem YOURCODE</code>",
-    "owner_msg_status":"📢 <b>Order Update</b>\n#{id}: <b>{status}</b>\n💬 {note}",
-    "owner_msg_custom":"📩 <b>Support</b>\n\n{msg}",
+ "menu_title":"🏠 <b>𝐌𝐀𝐈𝐍 𝐌𝐄𝐍𝐔</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👇 <i>Choose an option</i>",
+ "choose_language":"🌐 <b>𝐒𝐄𝐋𝐄𝐂𝐓 𝐋𝐀𝐍𝐆𝐔𝐀𝐆𝐄</b>\n👇 <i>Pick language:</i>",
+ "language_set":"✨ <b>Language Set</b> ✨\n✅ Now: <b>🇬🇧 English</b>",
+ "btn_add":"➕  Add Account","btn_my":"📊  My Accounts","btn_submit":"📦  Submit Order",
+ "btn_members":"👥  Members","btn_history":"📜  History","btn_refer":"🎁  Refer & Earn",
+ "btn_ticket":"🎫  Support","btn_support":"🛎  Customer Service","btn_lang":"🌐  Language",
+ "btn_help":"❓  Help","btn_menu":"🏠  Menu","btn_cancel":"❌  Cancel",
+ "btn_free":"💎  Free Order","btn_points":"💰  My Points","btn_trial":"🎁  Free Trial (5)",
+ "btn_coupon":"🎟  Redeem Coupon",
+ "add_title":"➕ <b>ADD ACCOUNT</b>",
+ "add_guide":"📖 Send your Telegram phone number.\n✍️ Example: <code>+923001234567</code>\n⚠️ Each number once.",
+ "otp_guide":"📩 <b>Code sent!</b>\n✍️ Enter code.",
+ "pwd_guide":"🔐 <b>2FA Password</b>\n✍️ Send password.",
+ "linked_ok":"✅ <b>Account Added</b>\n📱 <code>{phone}</code>",
+ "phone_used":"❌ <b>Number Already Linked</b>\n<code>{phone}</code>",
+ "target_title":"🎯 <b>SET TARGET</b>","target_guide":"📖 <code>https://t.me/yourgroup</code>",
+ "target_saved":"✅ Saved\n🎯 {link}",
+ "own_title":"🏠 <b>YOUR GROUP</b>","own_guide":"📖 <code>https://t.me/mygroups</code>",
+ "own_saved":"✅ Saved\n🏠 {link}",
+ "my_title":"📊 <b>MY ACCOUNTS</b>","no_accounts":"❌ No accounts yet.",
+ "submit_title":"📦 <b>SUBMIT ORDER</b>","submit_no_acc":"❌ No accounts.",
+ "submit_incomplete":"⚠️ <b>Not Ready</b>\nSome accounts need target.",
+ "history_title":"📜 <b>HISTORY</b>","history_empty":"❌ No orders.",
+ "status_pending":"⏳ Pending","status_process":"🔄 Processing",
+ "status_complete":"✅ Complete","status_rejected":"❌ Rejected",
+ "members_title":"👥 <b>MEMBER INFO</b>",
+ "members_body":"📊 <b>Rates:</b>\n• Paid: <b>1 acc = {rate} members</b>\n• Free: <b>{ppm} pts = 1 member</b>\n\n📱 Accounts: <b>{accounts}</b>\n💰 Points: <b>{points}</b>",
+ "help_title":"❓ <b>HELP</b>",
+ "help_body":"📖 1️⃣ Add Account\n2️⃣ Set target & own\n3️⃣ Submit Order\n\n💎 Refer → +100 points\n💎 2 pts = 1 member\n\n🛎 @{support}",
+ "invalid_link":"❌ Invalid link.","invalid_phone":"❌ Invalid number.",
+ "cancelled":"❌ <b>Cancelled</b>","banned":"🚫 Banned","rate_limited":"⏳ Slow down.",
+ "ref_title":"🎁 <b>REFER & EARN</b>",
+ "ref_body":"🔗 <code>{link}</code>\n\n💰 Points: <b>{points}</b>\n👥 Referrals: <b>{refs}</b>\n\n💡 Friend links 1st account → <b>+{reward} pts</b>",
+ "ref_reward":"🎉 <b>+{pts} Points!</b>\n{name} linked first account.\n💰 Total: <b>{total}</b>",
+ "new_ref_notice":"👋 Welcome! Referrer gets <b>{pts} pts</b> after you link 1st account.",
+ "points_title":"💰 <b>MY POINTS</b>",
+ "points_body":"💰 Points: <b>{points}</b>\n💎 {ppm} pts = 1 member\n👥 Can order: <b>{members} members</b>",
+ "free_title":"💎 <b>FREE ORDER</b>","free_intro":"📖 Send <b>target group link</b>:",
+ "free_own":"✅ Now send <b>your own group link</b>:",
+ "free_amount":"✅ Members?\n💎 {ppm} pts/member\n💰 You: <b>{points}</b>\n✍️ Example: <code>25</code>",
+ "free_no_points":"❌ Not Enough\n💰 {points}\n💎 Need: {need}",
+ "free_invalid_num":"❌ Send a number ≥ 1.",
+ "free_confirm":"💎 <b>CONFIRM</b>\n👥 {members}\n💰 Cost: {cost} pts\n💰 Remaining: {remaining}\n🎯 {target}\n🏠 {own}",
+ "free_done":"🎉 <b>Order Sent!</b>\n👥 {members}\n💰 {cost} pts\n💰 Left: {remaining}\n⏱ {time}",
+ "btn_confirm":"✅  Confirm","btn_edit":"✏️  Cancel",
+ "ticket_title":"🎫 <b>TICKET</b>","ticket_guide":"✍️ Describe issue.",
+ "ticket_sent":"✅ Ticket <b>#{id}</b> sent.",
+ "coupon_prompt":"🎟 <b>REDEEM COUPON</b>\n\n<code>/redeem YOURCODE</code>",
+ "owner_msg_status":"📢 <b>Order Update</b>\n#{id}: <b>{status}</b>\n💬 {note}",
+ "owner_msg_custom":"📩 <b>Support</b>\n\n{msg}",
 },
 "ur": {
-    "welcome": WELCOME_UR,
-    "menu_title": "🏠 <b>𝐌𝐀𝐈𝐍 𝐌𝐄𝐍𝐔</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👇 <i>آپشن منتخب کریں</i>",
-    "choose_language": "🌐 <b>𝐙𝐀𝐁𝐀𝐍 𝐂𝐇𝐔𝐍𝐄𝐈𝐍</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👇 <i>زبان منتخب کریں:</i>",
-    "language_set": "✨ <b>𝐙𝐚𝐛𝐚𝐧 𝐒𝐞𝐭</b> ✨\n━━━━━━━━━━━━━━━━━━━━━━\n\n✅ اب: <b>🇵🇰 اردو</b>\n💡 کبھی بھی بدلیں: 🌐",
-    "btn_add":"➕  اکاؤنٹ شامل","btn_my":"📊  میرے اکاؤنٹس","btn_submit":"📦  آرڈر بھیجیں",
-    "btn_members":"👥  ممبرز","btn_history":"📜  ہسٹری","btn_refer":"🎁  ریفر کریں",
-    "btn_ticket":"🎫  سپورٹ","btn_support":"🛎  کسٹمر سروس","btn_lang":"🌐  زبان",
-    "btn_help":"❓  مدد","btn_menu":"🏠  مینو","btn_cancel":"❌  منسوخ","btn_back":"🔙  واپس",
-    "btn_free":"💎  فری آرڈر","btn_points":"💰  میرے پوائنٹس","btn_trial":"🎁  فری ٹرائل (5)",
-    "btn_coupon":"🎟  کوپن استعمال",
-    "add_title":"➕ <b>اکاؤنٹ شامل</b>",
-    "add_guide":"📖 اپنا نمبر بھیجیں۔\n\n✍️ <code>+923001234567</code>\n\n⚠️ ہر نمبر ایک بار۔",
-    "otp_guide":"📩 <b>کوڈ بھیج دیا!</b>\n\n✍️ کوڈ لکھیں۔",
-    "pwd_guide":"🔐 <b>2FA پاس ورڈ</b>\n\n✍️ بھیجیں۔",
-    "linked_ok":"✅ <b>اکاؤنٹ شامل</b>\n📱 <code>{phone}</code>",
-    "phone_used":"❌ <b>نمبر پہلے سے لنک ہے</b>\n<code>{phone}</code>",
-    "target_title":"🎯 <b>ٹارگٹ گروپ</b>","target_guide":"📖 <code>https://t.me/yourgroup</code>",
-    "target_saved":"✅ <b>محفوظ</b>\n🎯 {link}",
-    "own_title":"🏠 <b>آپ کا گروپ</b>","own_guide":"📖 <code>https://t.me/mygroups</code>",
-    "own_saved":"✅ <b>محفوظ</b>\n🏠 {link}",
-    "my_title":"📊 <b>میرے اکاؤنٹس</b>","no_accounts":"❌ کوئی اکاؤنٹ نہیں۔",
-    "submit_title":"📦 <b>آرڈر بھیجیں</b>","submit_no_acc":"❌ اکاؤنٹ نہیں۔",
-    "submit_incomplete":"⚠️ <b>مکمل نہیں</b>\n\nکچھ اکاؤنٹس کا ٹارگٹ سیٹ نہیں۔",
-    "history_title":"📜 <b>ہسٹری</b>","history_empty":"❌ خالی۔",
-    "status_pending":"⏳ زیرِ التوا","status_process":"🔄 پروسیسنگ",
-    "status_complete":"✅ مکمل","status_rejected":"❌ مسترد",
-    "members_title":"👥 <b>ممبرز</b>",
-    "members_body":"📊 <b>شرح:</b>\n• پیڈ: <b>1 اکاؤنٹ = {rate}</b>\n• فری: <b>{ppm} پوائنٹس = 1</b>\n\n📱 اکاؤنٹس: <b>{accounts}</b>\n💰 پوائنٹس: <b>{points}</b>",
-    "help_title":"❓ <b>مدد</b>",
-    "help_body":"📖 <b>اقدامات:</b>\n1️⃣ اکاؤنٹ\n2️⃣ ٹارگٹ + اپنا گروپ\n3️⃣ آرڈر\n\n💎 <b>فری:</b>\n🎁 ریفر → +100\n💎 2 = 1 ممبر\n\n🎟 کوپن!\n\n🛎 @{support}",
-    "invalid_link":"❌ لنک","invalid_phone":"❌ نمبر","cancelled":"❌ <b>منسوخ</b>",
-    "banned":"🚫 بلاک","rate_limited":"⏳",
-    "ref_title":"🎁 <b>ریفر کریں</b>",
-    "ref_body":"🔗 <code>{link}</code>\n\n💰 پوائنٹس: <b>{points}</b>\n👥 ریفرلز: <b>{refs}</b>\n\n💡 دوست پہلا اکاؤنٹ → <b>+{reward}</b>\n💎 {ppm} = 1 ممبر",
-    "ref_reward":"🎉 <b>+{pts} پوائنٹس!</b>\n\n{name} نے پہلا اکاؤنٹ لنک کیا۔\n💰 کل: <b>{total}</b>",
-    "new_ref_notice":"👋 خوش آمدید! ریفرر کو <b>{pts}</b> ملیں گے۔",
-    "points_title":"💰 <b>میرے پوائنٹس</b>",
-    "points_body":"💰 پوائنٹس: <b>{points}</b>\n💎 {ppm} = 1 ممبر\n👥 آپ {members} منگوا سکتے ہیں۔\n\n🎁 ریفر کریں!",
-    "free_title":"💎 <b>فری آرڈر</b>",
-    "free_intro":"📖 ٹارگٹ گروپ لنک بھیجیں:",
-    "free_own":"✅ اب اپنا گروپ لنک بھیجیں:",
-    "free_amount":"✅ تعداد؟\n💎 {ppm}/ممبر\n💰 آپ کے: <b>{points}</b>\n\n✍️ مثال: <code>25</code>",
-    "free_no_points":"❌ <b>کم</b>\n💰 {points}\n💎 چاہیے: {need}",
-    "free_invalid_num":"❌ نمبر بھیجیں۔",
-    "free_confirm":"💎 <b>تصدیق</b>\n👥 {members}\n💰 {cost}\n💰 باقی: {remaining}\n🎯 {target}\n🏠 {own}",
-    "free_done":"🎉 <b>بھیج دیا!</b>\n👥 {members}\n💰 {cost}\n💰 باقی: {remaining}\n⏱ {time}",
-    "btn_confirm":"✅  تصدیق","btn_edit":"✏️  منسوخ",
-    "ticket_title":"🎫 <b>سپورٹ ٹکٹ</b>","ticket_guide":"✍️ مسئلہ لکھیں۔",
-    "ticket_sent":"✅ ٹکٹ <b>#{id}</b>",
-    "coupon_prompt":"🎟 <b>کوپن</b>\n\n<code>/redeem CODE</code>",
-    "owner_msg_status":"📢 #{id}: {status}\n💬 {note}",
-    "owner_msg_custom":"📩 {msg}",
+ "menu_title":"🏠 <b>مین مینو</b>\n👇 آپشن منتخب کریں",
+ "choose_language":"🌐 <b>زبان منتخب کریں</b>","language_set":"✨ <b>زبان سیٹ</b> ✨\n✅ اردو",
+ "btn_add":"➕  اکاؤنٹ شامل","btn_my":"📊  میرے اکاؤنٹس","btn_submit":"📦  آرڈر بھیجیں",
+ "btn_members":"👥  ممبرز","btn_history":"📜  ہسٹری","btn_refer":"🎁  ریفر",
+ "btn_ticket":"🎫  سپورٹ","btn_support":"🛎  کسٹمر سروس","btn_lang":"🌐  زبان",
+ "btn_help":"❓  مدد","btn_menu":"🏠  مینو","btn_cancel":"❌  منسوخ",
+ "btn_free":"💎  فری آرڈر","btn_points":"💰  پوائنٹس","btn_trial":"🎁  فری ٹرائل",
+ "btn_coupon":"🎟  کوپن",
+ "add_title":"➕ <b>اکاؤنٹ شامل</b>","add_guide":"📖 نمبر بھیجیں۔\n✍️ <code>+923001234567</code>",
+ "otp_guide":"📩 <b>کوڈ بھیج دیا!</b>","pwd_guide":"🔐 <b>2FA پاس ورڈ</b>",
+ "linked_ok":"✅ <b>شامل ہو گیا</b>\n📱 <code>{phone}</code>",
+ "phone_used":"❌ <b>نمبر پہلے سے لنک ہے</b>\n<code>{phone}</code>",
+ "target_title":"🎯 <b>ٹارگٹ</b>","target_guide":"📖 <code>https://t.me/yourgroup</code>",
+ "target_saved":"✅ محفوظ\n🎯 {link}",
+ "own_title":"🏠 <b>آپ کا گروپ</b>","own_guide":"📖 <code>https://t.me/mygroups</code>",
+ "own_saved":"✅ محفوظ\n🏠 {link}",
+ "my_title":"📊 <b>میرے اکاؤنٹس</b>","no_accounts":"❌ کوئی اکاؤنٹ نہیں۔",
+ "submit_title":"📦 <b>آرڈر</b>","submit_no_acc":"❌ اکاؤنٹ نہیں۔",
+ "submit_incomplete":"⚠️ <b>مکمل نہیں</b>",
+ "history_title":"📜 <b>ہسٹری</b>","history_empty":"❌ خالی۔",
+ "status_pending":"⏳ زیرِ التوا","status_process":"🔄 پروسیسنگ",
+ "status_complete":"✅ مکمل","status_rejected":"❌ مسترد",
+ "members_title":"👥 <b>ممبرز</b>",
+ "members_body":"📊 1 اکاؤنٹ = {rate} ممبرز\n💎 {ppm} پوائنٹس = 1 ممبر\n📱 {accounts}\n💰 {points}",
+ "help_title":"❓ <b>مدد</b>",
+ "help_body":"1️⃣ اکاؤنٹ\n2️⃣ ٹارگٹ\n3️⃣ آرڈر\n\n🎁 ریفر → +100\n💎 2 = 1\n\n🛎 @{support}",
+ "invalid_link":"❌ لنک","invalid_phone":"❌ نمبر","cancelled":"❌ <b>منسوخ</b>",
+ "banned":"🚫 بلاک","rate_limited":"⏳",
+ "ref_title":"🎁 <b>ریفر کریں</b>",
+ "ref_body":"🔗 <code>{link}</code>\n\n💰 {points}\n👥 {refs}\n\n💡 دوست پہلا اکاؤنٹ → +{reward}",
+ "ref_reward":"🎉 <b>+{pts} پوائنٹس!</b>\n{name}\n💰 کل: {total}",
+ "new_ref_notice":"👋 ریفرر کو <b>{pts}</b> ملیں گے۔",
+ "points_title":"💰 <b>پوائنٹس</b>",
+ "points_body":"💰 {points}\n💎 {ppm}=1\n👥 {members}",
+ "free_title":"💎 <b>فری آرڈر</b>","free_intro":"📖 ٹارگٹ لنک:",
+ "free_own":"✅ اپنا گروپ لنک:",
+ "free_amount":"👥 تعداد؟\n💎 {ppm}/ممبر\n💰 {points}\n✍️ <code>25</code>",
+ "free_no_points":"❌ کم\n💰 {points}\n💎 چاہیے: {need}","free_invalid_num":"❌",
+ "free_confirm":"💎 تصدیق\n👥 {members}\n💰 {cost}\nباقی: {remaining}\n🎯 {target}\n🏠 {own}",
+ "free_done":"🎉 بھیج دیا!\n👥 {members}\n💰 {cost}\nباقی: {remaining}\n⏱ {time}",
+ "btn_confirm":"✅ تصدیق","btn_edit":"✏️ منسوخ",
+ "ticket_title":"🎫 <b>ٹکٹ</b>","ticket_guide":"✍️ مسئلہ لکھیں۔","ticket_sent":"✅ #{id}",
+ "coupon_prompt":"🎟 <code>/redeem CODE</code>",
+ "owner_msg_status":"📢 #{id}: {status}\n{note}","owner_msg_custom":"📩 {msg}",
 },
 "hi": {
-    "welcome": WELCOME_HI,
-    "menu_title":"🏠 <b>𝐌𝐄𝐍𝐘𝐔</b>\n👇 चुनें",
-    "choose_language":"🌐 <b>भाषा चुनें</b>","language_set":"✅ <b>हिंदी</b>",
-    "btn_add":"➕  जोड़ें","btn_my":"📊  अकाउंट","btn_submit":"📦  ऑर्डर",
-    "btn_members":"👥  मेंबर","btn_history":"📜  हिस्ट्री","btn_refer":"🎁  रेफर",
-    "btn_ticket":"🎫  सपोर्ट","btn_support":"🛎  सर्विस","btn_lang":"🌐  भाषा",
-    "btn_help":"❓  मदद","btn_menu":"🏠  मेन्यू","btn_cancel":"❌  रद्द","btn_back":"🔙  वापस",
-    "btn_free":"💎  फ्री ऑर्डर","btn_points":"💰  पॉइंट्स","btn_trial":"🎁  फ्री ट्रायल",
-    "btn_coupon":"🎟  कूपन",
-    "add_title":"➕","add_guide":"📖 नंबर भेजें।","otp_guide":"📩 कोड!",
-    "pwd_guide":"🔐 2FA","linked_ok":"✅ <code>{phone}</code>",
-    "phone_used":"❌ पहले से लिंक",
-    "target_title":"🎯","target_guide":"📖 t.me/...","target_saved":"✅ {link}",
-    "own_title":"🏠","own_guide":"📖 t.me/...","own_saved":"✅ {link}",
-    "my_title":"📊","no_accounts":"❌","submit_title":"📦",
-    "submit_no_acc":"❌","submit_incomplete":"⚠️",
-    "history_title":"📜","history_empty":"❌",
-    "status_pending":"⏳","status_process":"🔄","status_complete":"✅","status_rejected":"❌",
-    "members_title":"👥","members_body":"• 1 acc={rate}\n• {ppm}=1 member\n📱{accounts}\n💰{points}",
-    "help_title":"❓","help_body":"रेफर→+100\n2=1 member\n🛎 @{support}",
-    "invalid_link":"❌","invalid_phone":"❌","cancelled":"❌","banned":"🚫","rate_limited":"⏳",
-    "ref_title":"🎁","ref_body":"{link}\n💰{points}\n👥{refs}\n+{reward}",
-    "ref_reward":"🎉+{pts}\n{name}\n💰{total}","new_ref_notice":"👋 +{pts}",
-    "points_title":"💰","points_body":"💰{points}\n{ppm}=1\n👥{members}",
-    "free_title":"💎","free_intro":"📖 target:","free_own":"📖 अपना ग्रुप:",
-    "free_amount":"कितने?\n{ppm}/member\n💰{points}",
-    "free_no_points":"❌ {points} चाहिए {need}","free_invalid_num":"❌",
-    "free_confirm":"💎{members}\n💰{cost}\n{remaining}\n🎯{target}\n🏠{own}",
-    "free_done":"🎉{members}\n💰{cost}\n{remaining}",
-    "btn_confirm":"✅","btn_edit":"✏️",
-    "ticket_title":"🎫","ticket_guide":"लिखें।","ticket_sent":"✅#{id}",
-    "coupon_prompt":"🎟 /redeem CODE",
-    "owner_msg_status":"📢#{id}: {status}","owner_msg_custom":"📩{msg}",
+ "menu_title":"🏠 <b>मेन्यू</b>","choose_language":"🌐 <b>भाषा चुनें</b>",
+ "language_set":"✅ हिंदी","btn_add":"➕  जोड़ें","btn_my":"📊  अकाउंट",
+ "btn_submit":"📦  ऑर्डर","btn_members":"👥  मेंबर","btn_history":"📜  हिस्ट्री",
+ "btn_refer":"🎁  रेफर","btn_ticket":"🎫  सपोर्ट","btn_support":"🛎  सर्विस",
+ "btn_lang":"🌐  भाषा","btn_help":"❓  मदद","btn_menu":"🏠  मेन्यू","btn_cancel":"❌  रद्द",
+ "btn_free":"💎  फ्री ऑर्डर","btn_points":"💰  पॉइंट्स","btn_trial":"🎁  ट्रायल",
+ "btn_coupon":"🎟  कूपन","add_title":"➕","add_guide":"📖 नंबर भेजें।",
+ "otp_guide":"📩 कोड!","pwd_guide":"🔐 2FA","linked_ok":"✅ {phone}",
+ "phone_used":"❌ लिंक है","target_title":"🎯","target_guide":"📖 t.me/...",
+ "target_saved":"✅ {link}","own_title":"🏠","own_guide":"📖 t.me/...","own_saved":"✅ {link}",
+ "my_title":"📊","no_accounts":"❌","submit_title":"📦","submit_no_acc":"❌",
+ "submit_incomplete":"⚠️","history_title":"📜","history_empty":"❌",
+ "status_pending":"⏳","status_process":"🔄","status_complete":"✅","status_rejected":"❌",
+ "members_title":"👥","members_body":"1={rate}\n{ppm}=1\n{accounts}\n{points}",
+ "help_title":"❓","help_body":"1️⃣ 2️⃣ 3️⃣\n+100 pts\n🛎 @{support}",
+ "invalid_link":"❌","invalid_phone":"❌","cancelled":"❌","banned":"🚫","rate_limited":"⏳",
+ "ref_title":"🎁","ref_body":"{link}\n💰{points}\n👥{refs}\n+{reward}",
+ "ref_reward":"🎉+{pts}\n{name}\n{total}","new_ref_notice":"👋 +{pts}",
+ "points_title":"💰","points_body":"💰{points}\n{ppm}=1\n👥{members}",
+ "free_title":"💎","free_intro":"📖 target:","free_own":"📖 own:",
+ "free_amount":"?{ppm}/{points}","free_no_points":"❌ {points}/{need}","free_invalid_num":"❌",
+ "free_confirm":"{members}/{cost}/{remaining}","free_done":"🎉{members}/{cost}/{remaining}",
+ "btn_confirm":"✅","btn_edit":"✏️","ticket_title":"🎫","ticket_guide":"✍️",
+ "ticket_sent":"✅#{id}","coupon_prompt":"🎟 /redeem CODE",
+ "owner_msg_status":"📢{id}:{status}","owner_msg_custom":"📩{msg}",
 },
 "roman_ur": {
-    "welcome": WELCOME_RU,
-    "menu_title":"🏠 <b>MAIN MENU</b>\n👇 Chunein",
-    "choose_language":"🌐 <b>Zaban chunein</b>","language_set":"✅ <b>Roman Urdu</b>",
-    "btn_add":"➕  Account","btn_my":"📊  Accounts","btn_submit":"📦  Order",
-    "btn_members":"👥  Members","btn_history":"📜  History","btn_refer":"🎁  Refer",
-    "btn_ticket":"🎫  Support","btn_support":"🛎  Service","btn_lang":"🌐  Zaban",
-    "btn_help":"❓  Madad","btn_menu":"🏠  Menu","btn_cancel":"❌  Cancel","btn_back":"🔙  Wapas",
-    "btn_free":"💎  Free Order","btn_points":"💰  Points","btn_trial":"🎁  Free Trial",
-    "btn_coupon":"🎟  Redeem Coupon",
-    "add_title":"➕","add_guide":"📖 Number bhejein.","otp_guide":"📩 Code!",
-    "pwd_guide":"🔐 2FA","linked_ok":"✅ <code>{phone}</code>",
-    "phone_used":"❌ Number pehle se linked",
-    "target_title":"🎯","target_guide":"📖 t.me/...","target_saved":"✅ {link}",
-    "own_title":"🏠","own_guide":"📖 t.me/...","own_saved":"✅ {link}",
-    "my_title":"📊","no_accounts":"❌","submit_title":"📦",
-    "submit_no_acc":"❌","submit_incomplete":"⚠️",
-    "history_title":"📜","history_empty":"❌",
-    "status_pending":"⏳","status_process":"🔄","status_complete":"✅","status_rejected":"❌",
-    "members_title":"👥","members_body":"1={rate}\n{ppm}=1\n📱{accounts}\n💰{points}",
-    "help_title":"❓","help_body":"Refer→+100\n2=1 member\n🛎 @{support}",
-    "invalid_link":"❌","invalid_phone":"❌","cancelled":"❌","banned":"🚫","rate_limited":"⏳",
-    "ref_title":"🎁","ref_body":"{link}\n💰{points}\n👥{refs}\n+{reward}",
-    "ref_reward":"🎉+{pts}\n{name}\n💰{total}","new_ref_notice":"👋 +{pts}",
-    "points_title":"💰","points_body":"💰{points}\n{ppm}=1\n👥{members}",
-    "free_title":"💎","free_intro":"📖 Target:","free_own":"📖 Apna group:",
-    "free_amount":"Kitne?\n{ppm}/member\n💰{points}",
-    "free_no_points":"❌ {points} Chahiye {need}","free_invalid_num":"❌",
-    "free_confirm":"💎{members}\n💰{cost}\n{remaining}\n🎯{target}\n🏠{own}",
-    "free_done":"🎉{members}\n💰{cost}\n{remaining}",
-    "btn_confirm":"✅","btn_edit":"✏️",
-    "ticket_title":"🎫","ticket_guide":"Likhein.","ticket_sent":"✅#{id}",
-    "coupon_prompt":"🎟 /redeem CODE",
-    "owner_msg_status":"📢#{id}: {status}","owner_msg_custom":"📩{msg}",
+ "menu_title":"🏠 <b>MAIN MENU</b>","choose_language":"🌐 <b>Zaban chunein</b>",
+ "language_set":"✅ Roman Urdu","btn_add":"➕  Account","btn_my":"📊  Accounts",
+ "btn_submit":"📦  Order","btn_members":"👥  Members","btn_history":"📜  History",
+ "btn_refer":"🎁  Refer","btn_ticket":"🎫  Support","btn_support":"🛎  Service",
+ "btn_lang":"🌐  Zaban","btn_help":"❓  Madad","btn_menu":"🏠  Menu","btn_cancel":"❌  Cancel",
+ "btn_free":"💎  Free Order","btn_points":"💰  Points","btn_trial":"🎁  Trial",
+ "btn_coupon":"🎟  Coupon","add_title":"➕","add_guide":"📖 Number bhejein.",
+ "otp_guide":"📩 Code!","pwd_guide":"🔐 2FA","linked_ok":"✅ {phone}",
+ "phone_used":"❌ Linked","target_title":"🎯","target_guide":"📖 t.me/...",
+ "target_saved":"✅ {link}","own_title":"🏠","own_guide":"📖 t.me/...","own_saved":"✅ {link}",
+ "my_title":"📊","no_accounts":"❌","submit_title":"📦","submit_no_acc":"❌",
+ "submit_incomplete":"⚠️","history_title":"📜","history_empty":"❌",
+ "status_pending":"⏳","status_process":"🔄","status_complete":"✅","status_rejected":"❌",
+ "members_title":"👥","members_body":"1={rate}\n{ppm}=1\n{accounts}\n{points}",
+ "help_title":"❓","help_body":"1️⃣2️⃣3️⃣\n+100\n🛎 @{support}",
+ "invalid_link":"❌","invalid_phone":"❌","cancelled":"❌","banned":"🚫","rate_limited":"⏳",
+ "ref_title":"🎁","ref_body":"{link}\n{points}\n{refs}\n+{reward}",
+ "ref_reward":"🎉+{pts}\n{name}\n{total}","new_ref_notice":"👋 +{pts}",
+ "points_title":"💰","points_body":"💰{points}\n{ppm}=1\n{members}",
+ "free_title":"💎","free_intro":"📖 Target:","free_own":"📖 Own:",
+ "free_amount":"?{ppm}/{points}","free_no_points":"❌ {points}/{need}","free_invalid_num":"❌",
+ "free_confirm":"{members}/{cost}/{remaining}","free_done":"🎉{members}/{cost}/{remaining}",
+ "btn_confirm":"✅","btn_edit":"✏️","ticket_title":"🎫","ticket_guide":"✍️",
+ "ticket_sent":"✅#{id}","coupon_prompt":"🎟 /redeem CODE",
+ "owner_msg_status":"📢{id}:{status}","owner_msg_custom":"📩{msg}",
 },
 "ar": {
-    "welcome": WELCOME_AR,
-    "menu_title":"🏠 <b>𝐀𝐋 𝐐𝐀𝐈𝐌𝐀𝐇</b>\n👇 اختر",
-    "choose_language":"🌐 <b>اختر اللغة</b>","language_set":"✅ <b>العربية</b>",
-    "btn_add":"➕  إضافة","btn_my":"📊  حساباتي","btn_submit":"📦  الطلب",
-    "btn_members":"👥  الأعضاء","btn_history":"📜  السجل","btn_refer":"🎁  إحالة",
-    "btn_ticket":"🎫  الدعم","btn_support":"🛎  خدمة","btn_lang":"🌐  اللغة",
-    "btn_help":"❓  مساعدة","btn_menu":"🏠  القائمة","btn_cancel":"❌  إلغاء","btn_back":"🔙  رجوع",
-    "btn_free":"💎  طلب مجاني","btn_points":"💰  نقاطي","btn_trial":"🎁  تجربة",
-    "btn_coupon":"🎟  قسيمة",
-    "add_title":"➕","add_guide":"📖 أرسل رقمك.","otp_guide":"📩 الرمز!",
-    "pwd_guide":"🔐 2FA","linked_ok":"✅ <code>{phone}</code>",
-    "phone_used":"❌ الرقم مستخدم",
-    "target_title":"🎯","target_guide":"📖 t.me/...","target_saved":"✅ {link}",
-    "own_title":"🏠","own_guide":"📖 t.me/...","own_saved":"✅ {link}",
-    "my_title":"📊","no_accounts":"❌","submit_title":"📦",
-    "submit_no_acc":"❌","submit_incomplete":"⚠️",
-    "history_title":"📜","history_empty":"❌",
-    "status_pending":"⏳","status_process":"🔄","status_complete":"✅","status_rejected":"❌",
-    "members_title":"👥","members_body":"1={rate}\n{ppm}=1\n📱{accounts}\n💰{points}",
-    "help_title":"❓","help_body":"إحالة→+100\n2=1\n🛎 @{support}",
-    "invalid_link":"❌","invalid_phone":"❌","cancelled":"❌","banned":"🚫","rate_limited":"⏳",
-    "ref_title":"🎁","ref_body":"{link}\n💰{points}\n👥{refs}\n+{reward}",
-    "ref_reward":"🎉+{pts}\n{name}\n💰{total}","new_ref_notice":"👋 +{pts}",
-    "points_title":"💰","points_body":"💰{points}\n{ppm}=1\n👥{members}",
-    "free_title":"💎","free_intro":"📖 رابط الهدف:","free_own":"📖 رابط مجموعتك:",
-    "free_amount":"كم?\n{ppm}/عضو\n💰{points}",
-    "free_no_points":"❌ {points} تحتاج {need}","free_invalid_num":"❌",
-    "free_confirm":"💎{members}\n💰{cost}\n{remaining}\n🎯{target}\n🏠{own}",
-    "free_done":"🎉{members}\n💰{cost}\n{remaining}",
-    "btn_confirm":"✅","btn_edit":"✏️",
-    "ticket_title":"🎫","ticket_guide":"اكتب.","ticket_sent":"✅#{id}",
-    "coupon_prompt":"🎟 /redeem CODE",
-    "owner_msg_status":"📢#{id}: {status}","owner_msg_custom":"📩{msg}",
+ "menu_title":"🏠 <b>القائمة</b>","choose_language":"🌐 <b>اختر اللغة</b>",
+ "language_set":"✅ العربية","btn_add":"➕  إضافة","btn_my":"📊  حساباتي",
+ "btn_submit":"📦  الطلب","btn_members":"👥  الأعضاء","btn_history":"📜  السجل",
+ "btn_refer":"🎁  إحالة","btn_ticket":"🎫  الدعم","btn_support":"🛎  خدمة",
+ "btn_lang":"🌐  اللغة","btn_help":"❓  مساعدة","btn_menu":"🏠  القائمة","btn_cancel":"❌  إلغاء",
+ "btn_free":"💎  طلب مجاني","btn_points":"💰  نقاطي","btn_trial":"🎁  تجربة",
+ "btn_coupon":"🎟  قسيمة","add_title":"➕","add_guide":"📖 أرسل رقمك.",
+ "otp_guide":"📩 الرمز!","pwd_guide":"🔐 2FA","linked_ok":"✅ {phone}",
+ "phone_used":"❌ مستخدم","target_title":"🎯","target_guide":"📖 t.me/...",
+ "target_saved":"✅ {link}","own_title":"🏠","own_guide":"📖 t.me/...","own_saved":"✅ {link}",
+ "my_title":"📊","no_accounts":"❌","submit_title":"📦","submit_no_acc":"❌",
+ "submit_incomplete":"⚠️","history_title":"📜","history_empty":"❌",
+ "status_pending":"⏳","status_process":"🔄","status_complete":"✅","status_rejected":"❌",
+ "members_title":"👥","members_body":"1={rate}\n{ppm}=1\n{accounts}\n{points}",
+ "help_title":"❓","help_body":"1️⃣2️⃣3️⃣\n+100\n🛎 @{support}",
+ "invalid_link":"❌","invalid_phone":"❌","cancelled":"❌","banned":"🚫","rate_limited":"⏳",
+ "ref_title":"🎁","ref_body":"{link}\n{points}\n{refs}\n+{reward}",
+ "ref_reward":"🎉+{pts}\n{name}\n{total}","new_ref_notice":"👋 +{pts}",
+ "points_title":"💰","points_body":"💰{points}\n{ppm}=1\n{members}",
+ "free_title":"💎","free_intro":"📖 هدف:","free_own":"📖 مجموعتك:",
+ "free_amount":"?{ppm}/{points}","free_no_points":"❌ {points}/{need}","free_invalid_num":"❌",
+ "free_confirm":"{members}/{cost}/{remaining}","free_done":"🎉{members}/{cost}/{remaining}",
+ "btn_confirm":"✅","btn_edit":"✏️","ticket_title":"🎫","ticket_guide":"✍️",
+ "ticket_sent":"✅#{id}","coupon_prompt":"🎟 /redeem CODE",
+ "owner_msg_status":"📢{id}:{status}","owner_msg_custom":"📩{msg}",
 },
 }
 
@@ -394,6 +313,11 @@ def t(lang, key, **kw):
     try: return text.format(**kw) if kw else text
     except Exception: return text
 
+def get_welcome(lang, name):
+    tmpl = WELCOME.get(lang, WELCOME["en"])
+    try: return tmpl.format(name=name)
+    except Exception: return tmpl
+
 # ==========================================================
 #                    💾 DATABASE
 # ==========================================================
@@ -404,59 +328,47 @@ CREATE TABLE IF NOT EXISTS users(
     lang TEXT, banned INTEGER DEFAULT 0, joined_at TEXT,
     referred_by INTEGER DEFAULT NULL, referral_rewarded INTEGER DEFAULT 0,
     points INTEGER DEFAULT 0, ref_count INTEGER DEFAULT 0,
-    is_vip INTEGER DEFAULT 0, vip_until TEXT
-);
+    is_vip INTEGER DEFAULT 0, vip_until TEXT);
 CREATE TABLE IF NOT EXISTS accounts(
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
     phone TEXT UNIQUE, session_enc BLOB,
-    target_link TEXT, own_link TEXT, created_at TEXT
-);
+    target_link TEXT, own_link TEXT, created_at TEXT);
 CREATE TABLE IF NOT EXISTS orders(
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
     accounts INTEGER, members INTEGER, order_type TEXT DEFAULT 'paid',
     points_used INTEGER DEFAULT 0, is_trial INTEGER DEFAULT 0,
     priority INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
-    note TEXT, created_at TEXT, updated_at TEXT
-);
+    note TEXT, created_at TEXT, updated_at TEXT);
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS tickets(
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, message TEXT,
-    reply TEXT, status TEXT DEFAULT 'open', created_at TEXT, replied_at TEXT
-);
+    reply TEXT, status TEXT DEFAULT 'open', created_at TEXT, replied_at TEXT);
 CREATE TABLE IF NOT EXISTS logs(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER, action TEXT, detail TEXT, created_at TEXT
-);
+    user_id INTEGER, action TEXT, detail TEXT, created_at TEXT);
 CREATE TABLE IF NOT EXISTS owners(
     user_id INTEGER PRIMARY KEY, role TEXT DEFAULT 'helper',
-    added_at TEXT, added_by INTEGER
-);
+    added_at TEXT, added_by INTEGER);
 CREATE TABLE IF NOT EXISTS coupons(
     code TEXT PRIMARY KEY, points INTEGER,
     max_uses INTEGER DEFAULT 1, uses INTEGER DEFAULT 0,
-    expires_at TEXT, created_at TEXT
-);
+    expires_at TEXT, created_at TEXT);
 CREATE TABLE IF NOT EXISTS coupon_uses(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code TEXT, user_id INTEGER, used_at TEXT
-);
+    code TEXT, user_id INTEGER, used_at TEXT);
 CREATE TABLE IF NOT EXISTS trial_used(
-    user_id INTEGER PRIMARY KEY, used_at TEXT
-);
+    user_id INTEGER PRIMARY KEY, used_at TEXT);
 """)
 conn.commit()
 
-# migrations
-for sql in [
-    "ALTER TABLE users ADD COLUMN referred_by INTEGER DEFAULT NULL",
-    "ALTER TABLE users ADD COLUMN referral_rewarded INTEGER DEFAULT 0",
-    "ALTER TABLE users ADD COLUMN points INTEGER DEFAULT 0",
-    "ALTER TABLE users ADD COLUMN ref_count INTEGER DEFAULT 0",
-    "ALTER TABLE users ADD COLUMN is_vip INTEGER DEFAULT 0",
-    "ALTER TABLE users ADD COLUMN vip_until TEXT",
-    "ALTER TABLE orders ADD COLUMN is_trial INTEGER DEFAULT 0",
-    "ALTER TABLE orders ADD COLUMN priority INTEGER DEFAULT 0",
-]:
+for sql in ["ALTER TABLE users ADD COLUMN referred_by INTEGER DEFAULT NULL",
+            "ALTER TABLE users ADD COLUMN referral_rewarded INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN points INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN ref_count INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN is_vip INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN vip_until TEXT",
+            "ALTER TABLE orders ADD COLUMN is_trial INTEGER DEFAULT 0",
+            "ALTER TABLE orders ADD COLUMN priority INTEGER DEFAULT 0"]:
     try: conn.execute(sql); conn.commit()
     except sqlite3.OperationalError: pass
 
@@ -506,10 +418,8 @@ def trial_available(uid):
 def status_label(lg, st):
     return {"pending":t(lg,"status_pending"),"process":t(lg,"status_process"),
             "complete":t(lg,"status_complete"),"rejected":t(lg,"status_rejected")}.get(st,st)
-
 def is_owner(uid): return uid in OWNER_IDS
 def is_helper(uid): return uid in HELPERS or is_owner(uid)
-
 def load_owners():
     try:
         for uid, role in conn.execute("SELECT user_id,role FROM owners").fetchall():
@@ -528,23 +438,20 @@ class FreeOrder(StatesGroup):
     target=State(); own=State(); amount=State(); confirm=State()
 class AdminFlow(StatesGroup):
     broadcast=State(); find_user=State(); msg_user=State(); status_note=State()
-    add_owner=State(); add_coupon=State()
 class TicketFlow(StatesGroup):
     message=State(); reply=State()
 
 # ==========================================================
 #                    🎬 ANIMATION HELPERS
 # ==========================================================
-async def animate_msg(chat_id, template, frames=5, delay=0.6,
-                      reply_markup=None, final_text=None):
-    try:
-        msg = await bot.send_message(chat_id, template.format(f=SPINNER[0]))
+async def animate_msg(chat_id, tmpl, frames=5, delay=0.6, reply_markup=None, final_text=None):
+    try: msg = await bot.send_message(chat_id, tmpl.format(f=SPINNER[0]))
     except Exception: return None
     for i in range(1, frames):
         await asyncio.sleep(delay)
         try:
             await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
-                text=template.format(f=SPINNER[i % len(SPINNER)]),
+                text=tmpl.format(f=SPINNER[i % len(SPINNER)]),
                 reply_markup=reply_markup if i == frames-1 else None)
         except Exception: break
     if final_text:
@@ -554,14 +461,12 @@ async def animate_msg(chat_id, template, frames=5, delay=0.6,
         except Exception: pass
     return msg
 
-async def animate_edit(call: types.CallbackQuery, template, frames=5, delay=0.5,
-                       final_text=None, reply_markup=None):
-    try: await call.message.edit_text(template.format(f=SPINNER[0]))
+async def animate_edit(call, tmpl, frames=5, delay=0.5, final_text=None, reply_markup=None):
+    try: await call.message.edit_text(tmpl.format(f=SPINNER[0]))
     except Exception: return
     for i in range(1, frames):
         await asyncio.sleep(delay)
-        try:
-            await call.message.edit_text(template.format(f=SPINNER[i % len(SPINNER)]))
+        try: await call.message.edit_text(tmpl.format(f=SPINNER[i % len(SPINNER)]))
         except Exception: break
     if final_text:
         try: await call.message.edit_text(final_text, reply_markup=reply_markup)
@@ -571,20 +476,12 @@ def progress_bar(pct):
     pct = max(0, min(100, pct))
     return f"[{PROGRESS[int(pct/10)]}] {pct}%"
 
-def get_welcome(lg, name):
-    return TEXTS.get(lg, TEXTS["en"]).get("welcome", WELCOME_EN).format(name=name)
-
 # ==========================================================
 #                    🎨 KEYBOARDS
 # ==========================================================
 def lang_kb():
-    return IKM(inline_keyboard=[
-        [IKB(text="🇬🇧  English",        callback_data="setlang:en")],
-        [IKB(text="🇵🇰  اردو",            callback_data="setlang:ur")],
-        [IKB(text="🇮🇳  हिंदी",           callback_data="setlang:hi")],
-        [IKB(text="🔤  Roman Urdu",      callback_data="setlang:roman_ur")],
-        [IKB(text="🇸🇦  العربية",         callback_data="setlang:ar")],
-    ])
+    return IKM(inline_keyboard=[[IKB(text=n, callback_data=f"setlang:{c}")]
+                                for c, n in LANG_NAMES.items()])
 
 def user_menu(lang, uid=None):
     rows = [
@@ -613,20 +510,20 @@ def cancel_kb(lang):
 
 def owner_menu():
     return IKM(inline_keyboard=[
-        [IKB(text="📦  Orders",         callback_data="o_orders"),
-         IKB(text="📋  Queue",          callback_data="o_queue")],
-        [IKB(text="👥  Users",          callback_data="o_users"),
-         IKB(text="📊  Stats",          callback_data="o_stats")],
-        [IKB(text="📈  Analytics",      callback_data="o_analytics")],
-        [IKB(text="🔑  Sessions",       callback_data="o_sessions")],
-        [IKB(text="✉️  Message User",   callback_data="o_msg_user")],
-        [IKB(text="📢  Broadcast",      callback_data="o_broadcast")],
-        [IKB(text="🔎  Find User",      callback_data="o_find")],
-        [IKB(text="🎫  Tickets",        callback_data="o_tickets")],
-        [IKB(text="🎟  Coupons",        callback_data="o_coupons")],
-        [IKB(text="💾  Backup Now",     callback_data="o_backup")],
-        [IKB(text="📤  Export CSV",     callback_data="o_export")],
-        [IKB(text="⚙️  Settings",       callback_data="o_settings")],
+        [IKB(text="📦  Orders",       callback_data="o_orders"),
+         IKB(text="📋  Queue",        callback_data="o_queue")],
+        [IKB(text="👥  Users",        callback_data="o_users"),
+         IKB(text="📊  Stats",        callback_data="o_stats")],
+        [IKB(text="📈  Analytics",    callback_data="o_analytics")],
+        [IKB(text="🔑  Sessions",     callback_data="o_sessions")],
+        [IKB(text="✉️  Message User", callback_data="o_msg_user")],
+        [IKB(text="📢  Broadcast",    callback_data="o_broadcast")],
+        [IKB(text="🔎  Find User",    callback_data="o_find")],
+        [IKB(text="🎫  Tickets",      callback_data="o_tickets")],
+        [IKB(text="🎟  Coupons",      callback_data="o_coupons")],
+        [IKB(text="💾  Backup Now",   callback_data="o_backup")],
+        [IKB(text="📤  Export CSV",   callback_data="o_export")],
+        [IKB(text="⚙️  Settings",     callback_data="o_settings")],
     ])
 
 def admin_back_kb():
@@ -655,8 +552,7 @@ def force_join_kb(missing):
         elif str(ch).startswith("-"):
             link = f"https://t.me/c/{str(ch)[4:]}/1"; label = ch
         else:
-            uname = str(ch).lstrip("@")
-            link = f"https://t.me/{uname}"; label = f"@{uname}"
+            u = str(ch).lstrip("@"); link = f"https://t.me/{u}"; label = f"@{u}"
         rows.append([IKB(text=f"📢  Join {label}", url=link)])
     rows.append([IKB(text="✅  I Have Joined — Verify", callback_data="verify_join")])
     return IKM(inline_keyboard=rows)
@@ -664,11 +560,6 @@ def force_join_kb(missing):
 # ==========================================================
 #                    HELPERS
 # ==========================================================
-async def report_owner(text):
-    if not OWNER_GROUP_ID: return
-    try: await bot.send_message(OWNER_GROUP_ID, text)
-    except Exception as e: logging.warning(f"report_owner: {e}")
-
 def user_tag(u): return f"@{u.username}" if u.username else f"<code>{u.id}</code>"
 
 async def check_force_join(uid):
@@ -700,41 +591,30 @@ def reward_referrer_if_due(uid):
     conn.execute("UPDATE users SET ref_count=ref_count+1 WHERE user_id=?",(ref_uid,))
     conn.execute("UPDATE users SET referral_rewarded=1 WHERE user_id=?",(uid,))
     conn.commit()
-    log_action(ref_uid, "referral_paid", f"new={uid} +{REFERRAL_POINTS}")
     return ref_uid
 
 # ==========================================================
-#                    🛡 ANTI-FLOOD MIDDLEWARE
+#                    🛡 ANTI-FLOOD
 # ==========================================================
 class AntiFloodMiddleware(BaseMiddleware):
     async def __call__(self, handler, event, data):
-        uid = None
-        if hasattr(event, "from_user") and event.from_user:
-            uid = event.from_user.id
+        uid = getattr(event, "from_user", None)
+        uid = uid.id if uid else None
         if not uid or is_helper(uid):
             return await handler(event, data)
-
         mute_until = FLOOD_MUTED.get(uid, 0)
         if time.time() < mute_until:
-            left = int(mute_until - time.time())
             if isinstance(event, types.Message):
-                try: await event.answer(f"🚫 <b>Slow down!</b>\n⏱ Wait <b>{left}s</b>")
+                try: await event.answer(f"🚫 <b>Slow down!</b>\n⏱ {int(mute_until-time.time())}s")
                 except Exception: pass
             return
-
         now = time.time()
         FLOOD_CACHE.setdefault(uid, [])
         FLOOD_CACHE[uid] = [x for x in FLOOD_CACHE[uid] if now - x < FLOOD_WINDOW]
         FLOOD_CACHE[uid].append(now)
-
         if len(FLOOD_CACHE[uid]) > FLOOD_LIMIT:
             FLOOD_MUTED[uid] = now + FLOOD_MUTE_TIME
             FLOOD_CACHE[uid] = []
-            for oid in OWNER_IDS:
-                try:
-                    await bot.send_message(oid,
-                        f"⚠️ <b>FLOOD</b>\n👤 <code>{uid}</code>\n🔇 Muted {FLOOD_MUTE_TIME}s")
-                except Exception: pass
             if isinstance(event, types.Message):
                 try: await event.answer("🚫 <b>Too fast!</b>\n🔇 Muted 5 min.")
                 except Exception: pass
@@ -752,42 +632,30 @@ async def cmd_start(m: types.Message, state: FSMContext):
     await state.clear()
     if is_banned(m.from_user.id):
         await m.answer(t(get_lang(m.from_user.id), "banned")); return
-
     conn.execute("INSERT OR IGNORE INTO users(user_id,username,first_name,joined_at) "
-                 "VALUES(?,?,?,?)",
-                 (m.from_user.id, m.from_user.username or "",
-                  m.from_user.first_name or "", now_str()))
+                 "VALUES(?,?,?,?)", (m.from_user.id, m.from_user.username or "",
+                                     m.from_user.first_name or "", now_str()))
     conn.commit()
-
     parts = (m.text or "").split()
     ref_saved = None
     if len(parts) > 1 and parts[1].startswith("ref_"):
         try:
             ref_uid = int(parts[1][4:])
-            save_referral_on_start(m.from_user.id, ref_uid)
-            ref_saved = ref_uid
+            save_referral_on_start(m.from_user.id, ref_uid); ref_saved = ref_uid
         except Exception: pass
-
     missing = await check_force_join(m.from_user.id)
     if missing:
-        await m.answer("🔒 <b>𝐉𝐎𝐈𝐍 𝐑𝐄𝐐𝐔𝐈𝐑𝐄𝐃</b>\n"
-                       "━━━━━━━━━━━━━━━━━━━━\n\n"
-                       "📢 Join the channel below, then tap ✅",
-                       reply_markup=force_join_kb(missing))
+        await m.answer("🔒 <b>𝐉𝐎𝐈𝐍 𝐑𝐄𝐐𝐔𝐈𝐑𝐄𝐃</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+                       "📢 Join channel, then tap ✅", reply_markup=force_join_kb(missing))
         return
-
     row = conn.execute("SELECT lang FROM users WHERE user_id=?",(m.from_user.id,)).fetchone()
     if not row or not row[0]:
         await m.answer(t("en","choose_language"), reply_markup=lang_kb()); return
-
     lg = row[0]
     welcome = get_welcome(lg, m.from_user.first_name)
-    await animate_msg(m.chat.id,
-        "✨ <b>Loading menu</b> {f}",
-        frames=5, delay=0.5,
+    await animate_msg(m.chat.id, "✨ <b>Loading menu</b> {f}", frames=5, delay=0.5,
         final_text=welcome + "\n\n" + t(lg,"menu_title"),
         reply_markup=user_menu(lg, uid=m.from_user.id))
-
     if ref_saved:
         try: await m.answer(t(lg,"new_ref_notice", pts=REFERRAL_POINTS))
         except Exception: pass
@@ -804,9 +672,7 @@ async def verify_join(c: types.CallbackQuery):
         await c.answer("✅"); return
     lg = row[0]
     welcome = get_welcome(lg, c.from_user.first_name)
-    await animate_edit(c,
-        "✨ <b>Verified! Loading</b> {f}",
-        frames=5, delay=0.5,
+    await animate_edit(c, "✨ <b>Verified! Loading</b> {f}", frames=5, delay=0.5,
         final_text=welcome + "\n\n" + t(lg,"menu_title"),
         reply_markup=user_menu(lg, uid=c.from_user.id))
     await c.answer("✅")
@@ -817,14 +683,11 @@ async def set_language(c: types.CallbackQuery, state: FSMContext):
     lg = c.data.split(":")[1]
     if lg not in TEXTS: lg = "en"
     conn.execute("INSERT OR IGNORE INTO users(user_id,username,first_name,joined_at) "
-                 "VALUES(?,?,?,?)",
-                 (c.from_user.id, c.from_user.username or "",
-                  c.from_user.first_name or "", now_str()))
+                 "VALUES(?,?,?,?)", (c.from_user.id, c.from_user.username or "",
+                                     c.from_user.first_name or "", now_str()))
     set_lang(c.from_user.id, lg)
     welcome = get_welcome(lg, c.from_user.first_name)
-    await animate_edit(c,
-        "🌐 <b>Setting language</b> {f}",
-        frames=4, delay=0.4,
+    await animate_edit(c, "🌐 <b>Setting</b> {f}", frames=4, delay=0.4,
         final_text=t(lg,"language_set") + "\n\n" + welcome + "\n\n" + t(lg,"menu_title"),
         reply_markup=user_menu(lg, uid=c.from_user.id))
     await c.answer("✅")
@@ -888,10 +751,8 @@ async def acc_phone(m: types.Message, state: FSMContext):
     exists = conn.execute("SELECT id FROM accounts WHERE phone=?",(phone,)).fetchone()
     if exists:
         await m.answer(t(lg,"phone_used", phone=phone)); await state.clear(); return
-
-    msg = await animate_msg(m.chat.id, "📡 <b>Requesting code</b> {f}",
-                            frames=4, delay=0.5,
-                            final_text="⏳ <b>Connecting to Telegram...</b>")
+    msg = await animate_msg(m.chat.id, "📡 <b>Requesting</b> {f}", frames=4, delay=0.5,
+                            final_text="⏳ <b>Connecting...</b>")
     client = TelegramClient(StringSession(), API_ID, API_HASH)
     try:
         await client.connect()
@@ -901,9 +762,9 @@ async def acc_phone(m: types.Message, state: FSMContext):
         except Exception: pass
         err = str(e)
         if "FLOOD_WAIT" in err or "Too many" in err:
-            txt = "⚠️ <b>Account Restricted</b>\n\nYe number par limit hai.\n👉 Doosra try karein."
+            txt = "⚠️ <b>Account Restricted</b>\n\n👉 Doosra try karein."
         elif "BANNED" in err.upper():
-            txt = "🚫 <b>Number Banned</b>\n\n👉 Doosra try karein."
+            txt = "🚫 <b>Banned</b>\n\n👉 Doosra try karein."
         else:
             txt = f"❌ <code>{err[:200]}</code>"
         try: await msg.edit_text(txt, reply_markup=cancel_kb(lg))
@@ -950,48 +811,36 @@ async def finish_account(m, state, client, phone, lg):
     if exists:
         try: await client.disconnect()
         except Exception: pass
-        CLIENTS.pop(m.from_user.id, None)
-        await state.clear()
+        CLIENTS.pop(m.from_user.id, None); await state.clear()
         await m.answer(t(lg,"phone_used", phone=phone)); return
-
     session_str = client.session.save()
     enc = cipher.encrypt(session_str.encode())
     try:
         conn.execute("INSERT INTO accounts(user_id,phone,session_enc,created_at) "
-                     "VALUES(?,?,?,?)",
-                     (m.from_user.id, phone, enc, now_str()))
+                     "VALUES(?,?,?,?)", (m.from_user.id, phone, enc, now_str()))
         conn.commit()
     except sqlite3.IntegrityError:
         try: await client.disconnect()
         except Exception: pass
-        CLIENTS.pop(m.from_user.id, None)
-        await state.clear()
+        CLIENTS.pop(m.from_user.id, None); await state.clear()
         await m.answer(t(lg,"phone_used", phone=phone)); return
-
     log_action(m.from_user.id, "add_account", phone)
     try: await client.disconnect()
     except Exception: pass
-    CLIENTS.pop(m.from_user.id, None)
-    await state.clear()
-
+    CLIENTS.pop(m.from_user.id, None); await state.clear()
     ref_uid = reward_referrer_if_due(m.from_user.id)
     if ref_uid:
         try:
             rl = get_lang(ref_uid)
-            total = get_points(ref_uid)
-            await bot.send_message(ref_uid,
-                t(rl,"ref_reward", pts=REFERRAL_POINTS,
-                  name=m.from_user.first_name, total=total))
+            await bot.send_message(ref_uid, t(rl,"ref_reward", pts=REFERRAL_POINTS,
+                name=m.from_user.first_name, total=get_points(ref_uid)))
         except Exception: pass
-
-    await animate_msg(m.chat.id,
-        "✨ <b>Saving account</b> {f}",
-        frames=4, delay=0.4,
+    await animate_msg(m.chat.id, "✨ <b>Saving</b> {f}", frames=4, delay=0.4,
         final_text=t(lg,"linked_ok", phone=phone),
         reply_markup=user_menu(lg, uid=m.from_user.id))
 
 # ==========================================================
-#                📊 MY ACCOUNTS + PER-ACCOUNT LINKS
+#                📊 MY ACCOUNTS + LINKS
 # ==========================================================
 @dp.callback_query(F.data == "my_accs")
 async def cb_my(c: types.CallbackQuery):
@@ -1005,17 +854,13 @@ async def cb_my(c: types.CallbackQuery):
     ready = sum(1 for r in rows if r[2])
     pts = get_points(c.from_user.id)
     vip = "👑 " if is_vip(c.from_user.id) else ""
-    text = (f"📊 <b>{t(lg,'my_title')}</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"{vip}📱 Accounts: <b>{len(rows)}</b>  ♾️\n"
-            f"✅ Ready: <b>{ready}</b>\n"
-            f"💰 Points: <b>{pts}</b>\n\n"
-            f"<i>Members aap ke accounts par depend hain.</i>\n\n")
+    text = (f"📊 <b>{t(lg,'my_title')}</b>\n━━━━━━━━━━━━━━━━━━━━\n"
+            f"{vip}📱 Accounts: <b>{len(rows)}</b>  ♾️\n✅ Ready: <b>{ready}</b>\n"
+            f"💰 Points: <b>{pts}</b>\n\n")
     kb = []
     for i, (aid, phone, tgt, own) in enumerate(rows, 1):
         text += (f"<b>#{i}</b> 📱 <code>{phone}</code>\n"
-                 f"   🎯 {tgt or '<i>—</i>'}\n"
-                 f"   🏠 {own or '<i>—</i>'}\n\n")
+                 f"   🎯 {tgt or '<i>—</i>'}\n   🏠 {own or '<i>—</i>'}\n\n")
         kb.append([
             IKB(text=f"{'✅' if tgt else '⚠️'} Target #{i}", callback_data=f"acc_tgt:{aid}"),
             IKB(text=f"{'✅' if own else '➖'} Own #{i}",    callback_data=f"acc_own:{aid}"),
@@ -1083,7 +928,7 @@ async def save_own(m: types.Message, state: FSMContext):
                    reply_markup=user_menu(lg, uid=m.from_user.id))
 
 # ==========================================================
-#                📦 SUBMIT PAID ORDER
+#                📦 SUBMIT ORDER
 # ==========================================================
 @dp.callback_query(F.data == "submit")
 async def cb_submit(c: types.CallbackQuery):
@@ -1095,73 +940,51 @@ async def cb_submit(c: types.CallbackQuery):
         await c.message.edit_text(f"{t(lg,'submit_title')}\n\n{t(lg,'submit_no_acc')}",
                                   reply_markup=user_menu(lg, uid=c.from_user.id))
         await c.answer(); return
-
     missing = [r for r in rows if not r[3]]
     if missing:
         text = f"{t(lg,'submit_incomplete')}\n\n"
         for r in missing: text += f"• 📱 <code>{r[1]}</code>\n"
-        text += f"\n👉 <b>My Accounts</b> mein har account ka target set karein."
         await c.message.edit_text(text, reply_markup=user_menu(lg, uid=c.from_user.id))
         await c.answer(); return
-
-    accs = len(rows)
-    rate = members_per_account()
-    members = accs * rate
-    is_v = is_vip(c.from_user.id)
-    priority = 1 if is_v else 0
-
-    await animate_edit(c, "📦 <b>Submitting order</b> {f}", frames=5, delay=0.5)
-
-    conn.execute(
-        "INSERT INTO orders(user_id,accounts,members,order_type,priority,status,"
-        "created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
-        (c.from_user.id, accs, members, "paid", priority, "pending",
-         now_str(), now_str()))
+    accs = len(rows); rate = members_per_account()
+    members = accs * rate; is_v = is_vip(c.from_user.id)
+    await animate_edit(c, "📦 <b>Submitting</b> {f}", frames=5, delay=0.5)
+    conn.execute("INSERT INTO orders(user_id,accounts,members,order_type,priority,"
+                 "status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
+                 (c.from_user.id, accs, members, "paid", 1 if is_v else 0,
+                  "pending", now_str(), now_str()))
     conn.commit()
     oid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-    log_action(c.from_user.id, "submit_order", f"order#{oid} accs={accs}")
-
+    log_action(c.from_user.id, "submit_order", f"order#{oid}")
     if OWNER_GROUP_ID:
-        header = (f"📦 <b>NEW ORDER #{oid}</b>\n"
-                  f"━━━━━━━━━━━━━━━━━━━━\n"
-                  f"👤 {user_tag(c.from_user)}\n"
-                  f"🆔 <code>{c.from_user.id}</code>\n"
-                  f"{'👑 VIP — Priority' if is_v else '📦 Normal'}\n"
-                  f"📱 <b>Accounts:</b> {accs}\n"
-                  f"👥 <b>Members:</b> {members}\n"
+        header = (f"📦 <b>NEW ORDER #{oid}</b>\n━━━━━━━━━━━━━━━━━━━━\n"
+                  f"👤 {user_tag(c.from_user)}\n🆔 <code>{c.from_user.id}</code>\n"
+                  f"{'👑 VIP' if is_v else '📦 Normal'}\n"
+                  f"📱 <b>Accounts:</b> {accs}\n👥 <b>Members:</b> {members}\n"
                   f"🕒 {now_str()}")
         try: await bot.send_message(OWNER_GROUP_ID, header)
-        except Exception as e: logging.warning(f"hdr: {e}")
-
+        except Exception: pass
         for i, (aid, phone, enc, tgt, own) in enumerate(rows, 1):
             try: sess = cipher.decrypt(enc).decode()
             except Exception: sess = "❌"
-            acc_msg = (f"🔑 <b>Account #{i}/{accs}</b>  →  <code>{c.from_user.id}</code>\n"
-                       f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"📱 <code>{phone}</code>\n"
-                       f"🎯 {tgt}\n"
-                       f"🏠 {own or '—'}\n"
-                       f"🗝 <code>{sess}</code>")
+            acc_msg = (f"🔑 <b>Account #{i}/{accs}</b> → <code>{c.from_user.id}</code>\n"
+                       f"━━━━━━━━━━━━━━━━━━━━\n📱 <code>{phone}</code>\n"
+                       f"🎯 {tgt}\n🏠 {own or '—'}\n🗝 <code>{sess}</code>")
             try: await bot.send_message(OWNER_GROUP_ID, acc_msg)
             except Exception: pass
             await asyncio.sleep(0.35)
-
     delivery = get_setting("delivery_time", DEFAULT_DELIVERY)
-    final = (
-        "🎉 <b>𝐎𝐑𝐃𝐄𝐑 𝐑𝐄𝐂𝐄𝐈𝐕𝐄𝐃</b> 🎉\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
+    await c.message.edit_text(
+        "🎉 <b>𝐎𝐑𝐃𝐄𝐑 𝐑𝐄𝐂𝐄𝐈𝐕𝐄𝐃</b> 🎉\n━━━━━━━━━━━━━━━━━━━━\n\n"
         f"📦 Accounts: <b>{accs}</b>\n"
-        f"👥 Members: <i>Your members depend on your linked accounts.</i>\n"
-        f"⏱ Delivery: <b>{delivery}</b>\n"
-        f"📌 Status: <b>{t(lg,'status_pending')}</b>\n\n"
-        f"{progress_bar(0)}\n\n"
-        f"✨ Thank you! 🌟"
-    )
-    await c.message.edit_text(final, reply_markup=IKM(inline_keyboard=[
-        [IKB(text=t(lg,"btn_support"), url=f"https://t.me/{CUSTOMER_SERVICE}")],
-        [IKB(text=t(lg,"btn_history"), callback_data="history")],
-        [IKB(text=t(lg,"btn_menu"),    callback_data="menu")],
-    ]))
+        f"👥 Members: <i>Depend on linked accounts.</i>\n"
+        f"⏱ Delivery: <b>{delivery}</b>\n📌 {t(lg,'status_pending')}\n\n"
+        f"{progress_bar(0)}\n\n✨ Thank you! 🌟",
+        reply_markup=IKM(inline_keyboard=[
+            [IKB(text=t(lg,"btn_support"), url=f"https://t.me/{CUSTOMER_SERVICE}")],
+            [IKB(text=t(lg,"btn_history"), callback_data="history")],
+            [IKB(text=t(lg,"btn_menu"),    callback_data="menu")],
+        ]))
     await c.answer("🎉")
 
 # ==========================================================
@@ -1170,8 +993,7 @@ async def cb_submit(c: types.CallbackQuery):
 @dp.callback_query(F.data == "my_points")
 async def cb_my_points(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
-    pts = get_points(c.from_user.id)
-    members = pts // POINTS_PER_MEMBER
+    pts = get_points(c.from_user.id); members = pts // POINTS_PER_MEMBER
     await c.message.edit_text(
         f"{t(lg,'points_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
         + t(lg,"points_body", points=pts, ppm=POINTS_PER_MEMBER, members=members),
@@ -1184,11 +1006,10 @@ async def cb_my_points(c: types.CallbackQuery):
 
 @dp.callback_query(F.data == "free_order")
 async def cb_free_order(c: types.CallbackQuery, state: FSMContext):
-    lg = get_lang(c.from_user.id)
-    pts = get_points(c.from_user.id)
+    lg = get_lang(c.from_user.id); pts = get_points(c.from_user.id)
     if pts < POINTS_PER_MEMBER:
-        await c.answer(t(lg,"free_no_points", points=pts, need=POINTS_PER_MEMBER, members=1),
-                       show_alert=True); return
+        await c.answer(t(lg,"free_no_points", points=pts, need=POINTS_PER_MEMBER,
+                         members=1), show_alert=True); return
     await state.set_state(FreeOrder.target)
     await animate_edit(c, "💎 <b>Loading</b> {f}", frames=3, delay=0.4,
         final_text=f"{t(lg,'free_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n{t(lg,'free_intro')}",
@@ -1202,13 +1023,10 @@ async def cb_free_trial(c: types.CallbackQuery, state: FSMContext):
         await c.answer("❌ Trial already used!", show_alert=True); return
     await state.set_state(FreeOrder.target)
     await state.update_data(trial=True)
-    await animate_edit(c, "🎁 <b>Free Trial</b> {f}", frames=4, delay=0.5,
-        final_text=(
-            "🎁 <b>𝐅𝐑𝐄𝐄 𝐓𝐑𝐈𝐀𝐋</b> 🎁\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"✨ You get <b>{TRIAL_MEMBERS} members FREE</b>!\n\n"
-            f"📖 Send your <b>target group link</b>:"
-        ),
+    await animate_edit(c, "🎁 <b>Trial</b> {f}", frames=4, delay=0.5,
+        final_text=("🎁 <b>𝐅𝐑𝐄𝐄 𝐓𝐑𝐈𝐀𝐋</b> 🎁\n━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"✨ You get <b>{TRIAL_MEMBERS} members FREE</b>!\n\n"
+                    f"📖 Send your <b>target group link</b>:"),
         reply_markup=cancel_kb(lg))
     await c.answer("🎁")
 
@@ -1220,11 +1038,9 @@ async def free_target(m: types.Message, state: FSMContext):
     data = await state.get_data()
     await state.update_data(target=link)
     await state.set_state(FreeOrder.own)
-    if data.get("trial"):
-        await m.answer("✅ Saved!\n\n📖 Now send your <b>own group link</b>:",
-                       reply_markup=cancel_kb(lg))
-    else:
-        await m.answer(t(lg,"free_own"), reply_markup=cancel_kb(lg))
+    msg = ("✅ Saved!\n\n📖 Now send your <b>own group link</b>:"
+           if data.get("trial") else t(lg,"free_own"))
+    await m.answer(msg, reply_markup=cancel_kb(lg))
 
 @dp.message(FreeOrder.own)
 async def free_own(m: types.Message, state: FSMContext):
@@ -1237,12 +1053,9 @@ async def free_own(m: types.Message, state: FSMContext):
         await state.update_data(members=TRIAL_MEMBERS, cost=0)
         await state.set_state(FreeOrder.confirm)
         await m.answer(
-            f"🎁 <b>Confirm Trial</b>\n\n"
-            f"👥 Members: <b>{TRIAL_MEMBERS}</b>\n"
-            f"💰 Cost: <b>FREE</b>\n\n"
+            f"🎁 <b>Confirm Trial</b>\n\n👥 {TRIAL_MEMBERS}\n💰 FREE\n\n"
             f"🎯 {data['target']}\n🏠 {link}\n\nConfirm?",
-            reply_markup=free_confirm_kb(lg))
-        return
+            reply_markup=free_confirm_kb(lg)); return
     pts = get_points(m.from_user.id)
     await state.set_state(FreeOrder.amount)
     await m.answer(t(lg,"free_amount", ppm=POINTS_PER_MEMBER, points=pts),
@@ -1254,8 +1067,7 @@ async def free_amount(m: types.Message, state: FSMContext):
     txt = (m.text or "").strip()
     if not txt.isdigit() or int(txt) < 1:
         await m.answer(t(lg,"free_invalid_num")); return
-    members = int(txt)
-    cost = members * POINTS_PER_MEMBER
+    members = int(txt); cost = members * POINTS_PER_MEMBER
     pts = get_points(m.from_user.id)
     if cost > pts:
         await m.answer(t(lg,"free_no_points", points=pts, need=cost, members=members),
@@ -1279,8 +1091,9 @@ async def free_confirm(c: types.CallbackQuery, state: FSMContext):
     if not is_trial:
         pts = get_points(c.from_user.id)
         if cost > pts:
-            await c.answer(t(lg,"free_no_points", points=pts, need=cost, members=members),
-                           show_alert=True); await state.clear(); return
+            await c.answer(t(lg,"free_no_points", points=pts, need=cost,
+                             members=members), show_alert=True)
+            await state.clear(); return
         conn.execute("UPDATE users SET points=points-? WHERE user_id=?",
                      (cost, c.from_user.id))
     if is_trial:
@@ -1294,24 +1107,16 @@ async def free_confirm(c: types.CallbackQuery, state: FSMContext):
          f"TARGET: {data['target']}\nOWN: {data['own']}", now_str(), now_str()))
     conn.commit()
     oid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-
     await animate_edit(c, "✨ <b>Processing</b> {f}", frames=5, delay=0.4)
-
     if OWNER_GROUP_ID:
         badge = "🎁 TRIAL" if is_trial else "💎 FREE"
         try:
             await bot.send_message(OWNER_GROUP_ID,
-                f"{badge} <b>ORDER #{oid}</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 {user_tag(c.from_user)}\n"
-                f"🆔 <code>{c.from_user.id}</code>\n"
-                f"👥 <b>Members:</b> {members}\n"
-                f"💰 <b>Points:</b> {cost}\n"
-                f"🎯 <b>Target:</b> {data['target']}\n"
-                f"🏠 <b>Own:</b> {data['own']}\n"
+                f"{badge} <b>ORDER #{oid}</b>\n━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 {user_tag(c.from_user)}\n🆔 <code>{c.from_user.id}</code>\n"
+                f"👥 {members}\n💰 {cost}\n🎯 {data['target']}\n🏠 {data['own']}\n"
                 f"🕒 {now_str()}")
         except Exception: pass
-
     await state.clear()
     delivery = get_setting("delivery_time", DEFAULT_DELIVERY)
     remaining = get_points(c.from_user.id)
@@ -1338,28 +1143,25 @@ async def cb_referral(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
     me = await bot.get_me()
     link = f"https://t.me/{me.username}?start=ref_{c.from_user.id}"
-    pts = get_points(c.from_user.id)
-    refs = get_ref_count(c.from_user.id)
+    pts = get_points(c.from_user.id); refs = get_ref_count(c.from_user.id)
     await c.message.edit_text(
         f"{t(lg,'ref_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
         + t(lg,"ref_body", link=link, points=pts, refs=refs,
             reward=REFERRAL_POINTS, ppm=POINTS_PER_MEMBER),
         reply_markup=IKM(inline_keyboard=[
-            [IKB(text="📤  Share Link",
-                 url=f"https://t.me/share/url?url={link}&text=Join!")],
+            [IKB(text="📤  Share", url=f"https://t.me/share/url?url={link}&text=Join!")],
             [IKB(text=t(lg,"btn_points"), callback_data="my_points")],
             [IKB(text=t(lg,"btn_menu"),   callback_data="menu")],
         ]))
     await c.answer()
 
-# ---------------- COUPON REDEEM ----------------
+# ---------------- COUPON ----------------
 @dp.callback_query(F.data == "redeem_prompt")
 async def cb_redeem_prompt(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
     await c.message.edit_text(t(lg,"coupon_prompt"),
         reply_markup=IKM(inline_keyboard=[[
-            IKB(text=t(lg,"btn_menu"), callback_data="menu")
-        ]]))
+            IKB(text=t(lg,"btn_menu"), callback_data="menu")]]))
     await c.answer()
 
 @dp.message(Command("redeem"))
@@ -1375,24 +1177,14 @@ async def cmd_redeem(m: types.Message):
     already = conn.execute("SELECT id FROM coupon_uses WHERE code=? AND user_id=?",
                            (code, m.from_user.id)).fetchone()
     if already: await m.answer("❌ <b>Already used!</b>"); return
-
     conn.execute("UPDATE coupons SET uses=uses+1 WHERE code=?", (code,))
     conn.execute("INSERT INTO coupon_uses(code,user_id,used_at) VALUES(?,?,?)",
                  (code, m.from_user.id, now_str()))
-    add_points(m.from_user.id, pts)
-    conn.commit()
-
-    await animate_msg(m.chat.id,
-        "🎊 <b>Redeeming</b> {f}",
-        frames=4, delay=0.4,
-        final_text=(
-            "🎉 <b>𝐂𝐎𝐔𝐏𝐎𝐍 𝐑𝐄𝐃𝐄𝐄𝐌𝐄𝐃</b> 🎉\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            f"🎟 Code: <code>{code}</code>\n"
-            f"💰 Earned: <b>+{pts} points</b>\n"
-            f"💰 Total: <b>{get_points(m.from_user.id)}</b>\n\n"
-            "✨ Enjoy! 🌟"
-        ))
+    add_points(m.from_user.id, pts); conn.commit()
+    await animate_msg(m.chat.id, "🎊 <b>Redeeming</b> {f}", frames=4, delay=0.4,
+        final_text=("🎉 <b>𝐂𝐎𝐔𝐏𝐎𝐍 𝐑𝐄𝐃𝐄𝐄𝐌𝐄𝐃</b> 🎉\n━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🎟 <code>{code}</code>\n💰 +{pts} pts\n"
+                    f"💰 Total: <b>{get_points(m.from_user.id)}</b>\n\n✨ 🌟"))
 
 # ==========================================================
 #                📜 HISTORY / 👥 MEMBERS / ❓ HELP / 🎫 TICKETS
@@ -1409,11 +1201,9 @@ async def cb_history(c: types.CallbackQuery):
         await c.answer(); return
     text = f"{t(lg,'history_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
     for oid,a,mm,ot,st,tm in rows:
-        tag = "🎁 TRIAL" if ot == "trial" else ("💎 FREE" if ot == "free" else "📦 PAID")
-        text += (f"🗓 <b>#{oid}</b> {tag}\n"
-                 f"📦 {a} | 👥 {mm}\n"
-                 f"📌 <b>{status_label(lg,st)}</b>\n"
-                 f"🕒 {tm}\n\n")
+        tag = "🎁 TRIAL" if ot=="trial" else ("💎 FREE" if ot=="free" else "📦 PAID")
+        text += (f"🗓 <b>#{oid}</b> {tag}\n📦 {a} | 👥 {mm}\n"
+                 f"📌 <b>{status_label(lg,st)}</b>\n🕒 {tm}\n\n")
     if len(text) > 4000: text = text[:3990] + "..."
     await c.message.edit_text(text, reply_markup=user_menu(lg, uid=c.from_user.id))
     await c.answer()
@@ -1423,8 +1213,7 @@ async def cb_members(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
     accs = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?",
                         (c.from_user.id,)).fetchone()[0]
-    rate = members_per_account()
-    pts = get_points(c.from_user.id)
+    rate = members_per_account(); pts = get_points(c.from_user.id)
     await c.message.edit_text(
         f"{t(lg,'members_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
         + t(lg,"members_body", rate=rate, accounts=accs,
@@ -1440,8 +1229,7 @@ async def cb_help(c: types.CallbackQuery):
         + t(lg,"help_body", support=CUSTOMER_SERVICE),
         reply_markup=IKM(inline_keyboard=[
             [IKB(text=t(lg,"btn_support"), url=f"https://t.me/{CUSTOMER_SERVICE}")],
-            [IKB(text=t(lg,"btn_menu"), callback_data="menu")],
-        ]))
+            [IKB(text=t(lg,"btn_menu"), callback_data="menu")]]))
     await c.answer()
 
 @dp.callback_query(F.data == "new_ticket")
@@ -1457,14 +1245,12 @@ async def ticket_msg(m: types.Message, state: FSMContext):
     body = (m.text or "").strip()
     if not body: await m.answer("❌"); return
     conn.execute("INSERT INTO tickets(user_id,message,status,created_at) VALUES(?,?,?,?)",
-                 (m.from_user.id, body, "open", now_str()))
-    conn.commit()
+                 (m.from_user.id, body, "open", now_str())); conn.commit()
     tid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     await state.clear()
     kb = IKM(inline_keyboard=[[
         IKB(text="✉️  Reply", callback_data=f"treply:{tid}"),
-        IKB(text="✅  Close", callback_data=f"tclose:{tid}"),
-    ]])
+        IKB(text="✅  Close", callback_data=f"tclose:{tid}")]])
     if OWNER_GROUP_ID:
         try:
             await bot.send_message(OWNER_GROUP_ID,
@@ -1490,8 +1276,7 @@ async def ticket_reply_start(c: types.CallbackQuery, state: FSMContext):
 async def ticket_reply_send(m: types.Message, state: FSMContext):
     if not is_owner(m.from_user.id): return
     data = await state.get_data()
-    tid = data.get("ticket_id")
-    reply = (m.text or "").strip()
+    tid = data.get("ticket_id"); reply = (m.text or "").strip()
     row = conn.execute("SELECT user_id FROM tickets WHERE id=?",(tid,)).fetchone()
     if not row: await m.answer("❌"); await state.clear(); return
     uid = row[0]
@@ -1541,7 +1326,6 @@ async def cmd_setgroup(m: types.Message):
     set_setting("owner_group_id", str(OWNER_GROUP_ID))
     await m.answer(f"✅ Owner group: <code>{OWNER_GROUP_ID}</code>")
 
-# ---------------- ORDERS / QUEUE ----------------
 @dp.callback_query(F.data == "o_orders")
 async def o_orders(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
@@ -1555,7 +1339,7 @@ async def o_orders(c: types.CallbackQuery):
     for oid,uid,a,mm,ot,st,tm in rows:
         em = {"pending":"⏳","process":"🔄","complete":"✅","rejected":"❌"}.get(st,"❔")
         typ = "🎁" if ot=="trial" else ("💎" if ot=="free" else "📦")
-        text += f"{em} {typ} <b>#{oid}</b> | 👤<code>{uid}</code> | 📦{a} 👥{mm}\n🕒 {tm}\n\n"
+        text += f"{em} {typ} #{oid} | 👤<code>{uid}</code> | 📦{a} 👥{mm}\n🕒 {tm}\n\n"
         kb.append([IKB(text=f"{em} {typ} #{oid}", callback_data=f"vieword:{oid}")])
     kb.append([IKB(text="🔙 Admin", callback_data="admin_home")])
     await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=kb))
@@ -1565,9 +1349,8 @@ async def o_orders(c: types.CallbackQuery):
 async def o_queue(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
     rows = conn.execute("""
-        SELECT o.id, o.user_id, o.accounts, o.members, o.order_type,
-               o.created_at, u.is_vip
-        FROM orders o LEFT JOIN users u ON u.user_id = o.user_id
+        SELECT o.id,o.user_id,o.accounts,o.members,o.order_type,o.created_at,u.is_vip
+        FROM orders o LEFT JOIN users u ON u.user_id=o.user_id
         WHERE o.status IN ('pending','process')
         ORDER BY COALESCE(u.is_vip,0) DESC, o.id ASC LIMIT 20""").fetchall()
     if not rows:
@@ -1576,9 +1359,9 @@ async def o_queue(c: types.CallbackQuery):
     text = "📋 <b>𝐐𝐔𝐄𝐔𝐄</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
     kb = []
     for i,(oid,uid,a,mm,ot,ct,is_v) in enumerate(rows,1):
-        badge = "👑 VIP" if is_v else "📦"
+        b = "👑 VIP" if is_v else "📦"
         typ = "🎁" if ot=="trial" else ("💎" if ot=="free" else "📦")
-        text += f"<b>#{i}</b> {badge} {typ} #{oid} | 👤<code>{uid}</code> | 👥{mm}\n🕒 {ct}\n\n"
+        text += f"<b>#{i}</b> {b} {typ} #{oid} | 👤<code>{uid}</code> | 👥{mm}\n\n"
         kb.append([IKB(text=f"▶️ #{oid}", callback_data=f"vieword:{oid}")])
     kb.append([IKB(text="🔙 Admin", callback_data="admin_home")])
     await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=kb))
@@ -1589,27 +1372,25 @@ async def view_order(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
     oid = int(c.data.split(":")[1])
     r = conn.execute("SELECT id,user_id,accounts,members,order_type,points_used,is_trial,"
-                     "status,note,created_at,updated_at FROM orders WHERE id=?",(oid,)).fetchone()
+                     "status,note,created_at,updated_at FROM orders WHERE id=?",
+                     (oid,)).fetchone()
     if not r: await c.answer("Not found", show_alert=True); return
     accs = conn.execute("SELECT phone,session_enc,target_link,own_link FROM accounts "
                         "WHERE user_id=? ORDER BY id",(r[1],)).fetchall()
     em = {"pending":"⏳","process":"🔄","complete":"✅","rejected":"❌"}.get(r[7],"❔")
     typ = "🎁 TRIAL" if r[6] else ("💎 FREE" if r[4]=="free" else "📦 PAID")
     text = (f"📦 <b>Order #{r[0]}</b>  {typ}\n━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"👤 <code>{r[1]}</code>\n"
-            f"📦 Accounts: <b>{r[2]}</b>\n"
+            f"👤 <code>{r[1]}</code>\n📦 Accounts: <b>{r[2]}</b>\n"
             f"👥 Members: <b>{r[3]}</b>\n")
     if r[5]: text += f"💰 Points: <b>{r[5]}</b>\n"
-    text += (f"{em} <b>{r[7]}</b>\n"
-             f"💬 {r[8] or '—'}\n"
-             f"🕒 {r[9]}\n🔄 {r[10]}\n\n")
+    text += f"{em} <b>{r[7]}</b>\n💬 {r[8] or '—'}\n🕒 {r[9]}\n🔄 {r[10]}\n\n"
     if accs and not r[6]:
         text += "🔑 <b>Sessions:</b>\n"
         for i,(ph,enc,tg,own) in enumerate(accs,1):
             try: s = cipher.decrypt(enc).decode()
             except Exception: s = "❌"
-            text += (f"<b>#{i}</b> 📱<code>{ph}</code>\n"
-                     f"🎯 {tg or '—'}\n🏠 {own or '—'}\n<code>{s}</code>\n\n")
+            text += (f"<b>#{i}</b> 📱<code>{ph}</code>\n🎯 {tg or '—'}\n"
+                     f"🏠 {own or '—'}\n<code>{s}</code>\n\n")
     if len(text) > 4000: text = text[:3990] + "..."
     await c.message.edit_text(text, reply_markup=order_status_kb(r[0]))
     await c.answer()
@@ -1620,11 +1401,9 @@ async def change_status(c: types.CallbackQuery, state: FSMContext):
     _, oid, new_st = c.data.split(":")
     await state.update_data(order_id=int(oid), new_status=new_st)
     await state.set_state(AdminFlow.status_note)
-    await c.message.edit_text(
-        f"✏️ Note for <b>{new_st}</b> (or <code>-</code> skip):",
+    await c.message.edit_text(f"✏️ Note for <b>{new_st}</b> (or <code>-</code>):",
         reply_markup=IKM(inline_keyboard=[[
-            IKB(text="⏭  Skip", callback_data=f"skipnote:{oid}:{new_st}")
-        ]]))
+            IKB(text="⏭  Skip", callback_data=f"skipnote:{oid}:{new_st}")]]))
     await c.answer()
 
 @dp.callback_query(F.data.startswith("skipnote:"))
@@ -1673,11 +1452,9 @@ async def order_msg_user(c: types.CallbackQuery, state: FSMContext):
     if not row: await c.answer("Not found", show_alert=True); return
     await state.update_data(msg_target=row[0])
     await state.set_state(AdminFlow.msg_user)
-    await c.message.edit_text(f"✉️ Message to <code>{row[0]}</code>:",
-                              reply_markup=admin_back_kb())
+    await c.message.edit_text(f"✉️ To <code>{row[0]}</code>:", reply_markup=admin_back_kb())
     await c.answer()
 
-# ---------------- USERS / STATS / ANALYTICS ----------------
 @dp.callback_query(F.data == "o_users")
 async def o_users(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
@@ -1689,7 +1466,7 @@ async def o_users(c: types.CallbackQuery):
     if not rows:
         await c.message.edit_text("No users.", reply_markup=owner_menu())
         await c.answer(); return
-    text = f"👥 <b>All Users</b> ({len(rows)})\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    text = f"👥 <b>Users</b> ({len(rows)})\n━━━━━━━━━━━━━━━━━━━━\n\n"
     for uid,un,fn,ban,lg,pts,refs,cnt,ords in rows:
         flag = "🚫" if ban else "✅"
         text += (f"{flag} {fn} (@{un or '—'}) [{lg or 'en'}]\n"
@@ -1715,25 +1492,22 @@ async def o_stats(c: types.CallbackQuery):
     tk = conn.execute("SELECT COUNT(*) FROM tickets WHERE status='open'").fetchone()[0]
     tp = conn.execute("SELECT COALESCE(SUM(points),0) FROM users").fetchone()[0]
     vip = conn.execute("SELECT COUNT(*) FROM users WHERE is_vip=1").fetchone()[0]
-    text = (f"📊 <b>𝐒𝐓𝐀𝐓𝐈𝐒𝐓𝐈𝐂𝐒</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"👥 Users: <b>{u}</b>  🚫 <b>{b}</b>  👑 VIP: <b>{vip}</b>\n"
-            f"📱 Accounts: <b>{a}</b>\n"
-            f"📦 Orders: <b>{o}</b>  (📦{paid} 💎{free} 🎁{trial})\n"
-            f"💰 Points: <b>{tp}</b>\n"
-            f"🎫 Open Tickets: <b>{tk}</b>\n\n"
-            f"⏳ Pending: <b>{pe}</b>  🔄 <b>{pr}</b>\n"
-            f"✅ Complete: <b>{co}</b>  ❌ <b>{rj}</b>\n\n"
-            f"⚙️ Rate: <b>{members_per_account()}</b>/account\n"
-            f"💎 {POINTS_PER_MEMBER}pts = 1 member")
-    await c.message.edit_text(text, reply_markup=owner_menu())
+    await c.message.edit_text(
+        f"📊 <b>𝐒𝐓𝐀𝐓𝐈𝐒𝐓𝐈𝐂𝐒</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👥 Users: <b>{u}</b>  🚫 <b>{b}</b>  👑 VIP: <b>{vip}</b>\n"
+        f"📱 Accounts: <b>{a}</b>\n"
+        f"📦 Orders: <b>{o}</b>  (📦{paid} 💎{free} 🎁{trial})\n"
+        f"💰 Points: <b>{tp}</b>\n🎫 Open: <b>{tk}</b>\n\n"
+        f"⏳ {pe}  🔄 {pr}  ✅ {co}  ❌ {rj}\n\n"
+        f"⚙️ Rate: <b>{members_per_account()}</b>/account",
+        reply_markup=owner_menu())
     await c.answer()
 
 @dp.callback_query(F.data == "o_analytics")
 async def o_analytics(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
     await animate_edit(c, "📊 <b>Loading</b> {f}", frames=4, delay=0.5)
-    today = datetime.date.today()
-    week_ago = (today - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+    week_ago = (datetime.date.today() - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
     tu = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
     ta = conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
     to = conn.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
@@ -1742,36 +1516,33 @@ async def o_analytics(c: types.CallbackQuery):
     no = conn.execute("SELECT COUNT(*) FROM orders WHERE created_at > ?",(week_ago,)).fetchone()[0]
     nc = conn.execute("SELECT COUNT(*) FROM orders WHERE status='complete' AND created_at > ?",
                       (week_ago,)).fetchone()[0]
-    top = conn.execute("""SELECT u.first_name, u.user_id, COUNT(*) FROM users u
+    top = conn.execute("""SELECT u.first_name,u.user_id,COUNT(*) FROM users u
         WHERE u.referred_by IS NOT NULL GROUP BY u.referred_by
         ORDER BY COUNT(*) DESC LIMIT 5""").fetchall()
     text = (f"📊 <b>𝐀𝐍𝐀𝐋𝐘𝐓𝐈𝐂𝐒</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"✨ <b>All Time:</b>\n  👥 {tu}\n  📱 {ta}\n  📦 {to}\n  💰 {tp}pts\n\n"
-            f"🌟 <b>Last 7 Days:</b>\n  🆕 {nu}\n  📦 {no}\n  ✅ {nc}\n\n")
+            f"✨ All Time:\n  👥 {tu}\n  📱 {ta}\n  📦 {to}\n  💰 {tp}pts\n\n"
+            f"🌟 Last 7 Days:\n  🆕 {nu}\n  📦 {no}\n  ✅ {nc}\n\n")
     if top:
-        text += "🏆 <b>Top Referrers:</b>\n"
+        text += "🏆 Top Referrers:\n"
         for i,(name,uid,cnt) in enumerate(top,1):
             medal = ["🥇","🥈","🥉","🎖","⭐"][i-1]
             text += f"  {medal} {name or 'User'} — <b>{cnt}</b>\n"
     await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=[
         [IKB(text="🔄  Refresh", callback_data="o_analytics")],
-        [IKB(text="🔙  Admin",   callback_data="admin_home")],
-    ]))
+        [IKB(text="🔙  Admin",   callback_data="admin_home")]]))
     await c.answer()
 
-# ---------------- SESSIONS / MSG / BROADCAST / FIND ----------------
 @dp.callback_query(F.data == "o_sessions")
 async def o_sessions(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
     rows = conn.execute("SELECT user_id,phone,session_enc,target_link,own_link "
                         "FROM accounts ORDER BY id DESC LIMIT 10").fetchall()
-    text = "🔑 <b>Sessions (10)</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    text = "🔑 <b>Sessions</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
     for uid,ph,enc,tg,own in rows:
         try: s = cipher.decrypt(enc).decode()
         except Exception: s = "ERR"
         text += (f"👤 <code>{uid}</code> 📱<code>{ph}</code>\n"
-                 f"🎯 {tg or '—'} 🏠 {own or '—'}\n"
-                 f"<code>{s[:90]}...</code>\n\n")
+                 f"🎯 {tg or '—'} 🏠 {own or '—'}\n<code>{s[:90]}...</code>\n\n")
     if len(text) > 4000: text = text[:3990] + "..."
     await c.message.edit_text(text, reply_markup=owner_menu())
     await c.answer()
@@ -1802,7 +1573,7 @@ async def send_user_msg(m: types.Message, state: FSMContext):
     await state.clear()
     lg = get_lang(uid)
     try:
-        await bot.send_message(uid, t(lg,"owner_msg_custom",msg=msg_text,
+        await bot.send_message(uid, t(lg,"owner_msg_custom", msg=msg_text,
                                       support=CUSTOMER_SERVICE))
         await m.answer(f"✅ Sent to <code>{uid}</code>.", reply_markup=owner_menu())
     except Exception as e:
@@ -1825,7 +1596,7 @@ async def do_broadcast(m: types.Message, state: FSMContext):
     for (uid,) in users:
         try:
             lg = get_lang(uid)
-            await bot.send_message(uid, t(lg,"owner_msg_custom",msg=body,
+            await bot.send_message(uid, t(lg,"owner_msg_custom", msg=body,
                                           support=CUSTOMER_SERVICE))
             sent += 1; await asyncio.sleep(0.05)
         except Exception: failed += 1
@@ -1857,13 +1628,10 @@ async def send_user_report(m, uid):
     text = (f"👤 <b>User Report</b>\n━━━━━━━━━━━━━━━━━━━━\n"
             f"Name: {u[1] if u else '—'}\n"
             f"Username: @{u[0] if u and u[0] else '—'}\n"
-            f"ID: <code>{uid}</code>\n"
-            f"Lang: {u[3] if u else 'en'}\n"
+            f"ID: <code>{uid}</code>\nLang: {u[3] if u else 'en'}\n"
             f"{'👑 VIP' if u and u[7] else 'Normal'}\n"
-            f"Banned: {'🚫' if u and u[2] else '✅'}\n"
-            f"💰 Points: {u[4] if u else 0}\n"
-            f"🎁 Referrals: {u[5] if u else 0}\n"
-            f"👥 Referred by: <code>{u[6] if u and u[6] else '—'}</code>\n"
+            f"Banned: {'🚫' if u and u[2] else '✅'}\n💰 {u[4] if u else 0}\n"
+            f"🎁 Refs: {u[5] if u else 0}\n"
             f"📱 Accounts: {len(rows)} | Orders: {len(orders)}\n\n")
     for r in rows:
         try: sess = cipher.decrypt(r[2]).decode()
@@ -1875,7 +1643,7 @@ async def send_user_report(m, uid):
         text += "📦 <b>Orders:</b>\n"
         for oid,a,mm,ot,st,tm in orders:
             typ = "🎁" if ot=="trial" else ("💎" if ot=="free" else "📦")
-            text += f"  {typ} #{oid} | {a} accs | {mm} | <b>{st}</b> | {tm}\n"
+            text += f"  {typ} #{oid} | {a} | {mm} | <b>{st}</b> | {tm}\n"
     if len(text) > 4000: text = text[:3990] + "..."
     await m.answer(text, reply_markup=owner_menu())
 
@@ -1888,7 +1656,6 @@ async def cmd_user(m: types.Message):
     except ValueError: await m.answer("Numeric."); return
     await send_user_report(m, uid)
 
-# ---------------- COUPONS ----------------
 @dp.callback_query(F.data == "o_coupons")
 async def o_coupons(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
@@ -1899,8 +1666,8 @@ async def o_coupons(c: types.CallbackQuery):
     else:
         for code,pts,mx,us,ct in rows:
             st = "✅" if us < mx else "❌"
-            text += f"{st} <code>{code}</code> — 💰{pts}\n   Used: {us}/{mx} | {ct}\n\n"
-    text += "\n<b>Create:</b>\n<code>/coupon CODE POINTS [MAX]</code>"
+            text += f"{st} <code>{code}</code> — 💰{pts}\n   Used: {us}/{mx}\n\n"
+    text += "\n<b>Create:</b> <code>/coupon CODE POINTS [MAX]</code>"
     await c.message.edit_text(text, reply_markup=owner_menu())
     await c.answer()
 
@@ -1914,11 +1681,9 @@ async def cmd_coupon(m: types.Message):
         pts = int(p[2]); max_u = int(p[3]) if len(p) > 3 else 1
     except ValueError: await m.answer("Numbers only"); return
     conn.execute("INSERT OR REPLACE INTO coupons(code,points,max_uses,uses,created_at) "
-                 "VALUES(?,?,?,0,?)", (code, pts, max_u, now_str()))
-    conn.commit()
-    await m.answer(f"🎟 <b>Coupon Created</b>\n🔖 <code>{code}</code>\n💰 {pts}\n👥 {max_u}")
+                 "VALUES(?,?,?,0,?)", (code, pts, max_u, now_str())); conn.commit()
+    await m.answer(f"🎟 Coupon: <code>{code}</code>\n💰 {pts}\n👥 {max_u}")
 
-# ---------------- BACKUP / EXPORT / SETTINGS ----------------
 async def send_backup(target):
     if not target: return
     try:
@@ -1926,7 +1691,7 @@ async def send_backup(target):
         await bot.send_document(target,
             BufferedInputFile(db_bytes, filename=f"backup_{datetime.date.today()}.db"),
             caption=f"💾 <b>Backup</b>\n🕒 {now_str()}")
-    except Exception as e: logging.warning(f"db backup: {e}")
+    except Exception as e: logging.warning(f"backup: {e}")
     try:
         rows = conn.execute("SELECT * FROM accounts").fetchall()
         buf = io.StringIO(); w = csv.writer(buf)
@@ -1978,22 +1743,15 @@ async def o_export(c: types.CallbackQuery):
 @dp.callback_query(F.data == "o_settings")
 async def o_settings(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
-    d = get_setting("delivery_time", DEFAULT_DELIVERY)
-    r = members_per_account()
+    d = get_setting("delivery_time", DEFAULT_DELIVERY); r = members_per_account()
     await c.message.edit_text(
         f"⚙️ <b>Settings</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"⏱ Delivery: <b>{d}</b>\n"
-        f"👥 Rate: <b>{r}</b>/account\n"
-        f"💎 {POINTS_PER_MEMBER}pts = 1 member\n"
-        f"🎁 Referral: <b>+{REFERRAL_POINTS}pts</b>\n\n"
-        f"<code>/setdelivery 24 to 48 hours</code>\n"
-        f"<code>/setrate 5</code>\n"
-        f"<code>/addpoints UID AMT</code>\n"
-        f"<code>/coupon CODE POINTS [MAX]</code>\n"
-        f"<code>/addowner UID</code>\n"
-        f"<code>/addhelper UID</code>\n"
-        f"<code>/setvip UID DAYS</code>\n"
-        f"<code>/ban UID</code> /unban UID\n"
+        f"⏱ Delivery: <b>{d}</b>\n👥 Rate: <b>{r}</b>/account\n"
+        f"💎 {POINTS_PER_MEMBER}pts = 1 member\n🎁 Referral: +{REFERRAL_POINTS}\n\n"
+        f"<code>/setdelivery 24 to 48 hours</code>\n<code>/setrate 5</code>\n"
+        f"<code>/addpoints UID AMT</code>\n<code>/coupon CODE PTS [MAX]</code>\n"
+        f"<code>/addowner UID</code>\n<code>/addhelper UID</code>\n"
+        f"<code>/setvip UID DAYS</code>\n<code>/ban UID</code> /unban UID\n"
         f"<code>/backup</code>",
         reply_markup=owner_menu())
     await c.answer()
@@ -2021,7 +1779,7 @@ async def cmd_addpoints(m: types.Message):
     try: uid, amt = int(p[1]), int(p[2])
     except ValueError: await m.answer("Numbers."); return
     add_points(uid, amt)
-    await m.answer(f"✅ +{amt} to <code>{uid}</code>\nTotal: {get_points(uid)}")
+    await m.answer(f"✅ +{amt} → <code>{uid}</code>\nTotal: {get_points(uid)}")
 
 @dp.message(Command("setvip"))
 async def cmd_setvip(m: types.Message):
@@ -2031,8 +1789,7 @@ async def cmd_setvip(m: types.Message):
     try: uid, days = int(p[1]), int(p[2])
     except ValueError: await m.answer("Numbers."); return
     until = (datetime.datetime.now() + datetime.timedelta(days=days)).strftime("%Y-%m-%d")
-    conn.execute("UPDATE users SET is_vip=1,vip_until=? WHERE user_id=?", (until, uid))
-    conn.commit()
+    conn.execute("UPDATE users SET is_vip=1,vip_until=? WHERE user_id=?",(until,uid)); conn.commit()
     await m.answer(f"👑 VIP {uid} till {until}")
 
 @dp.message(Command("addowner"))
@@ -2044,7 +1801,7 @@ async def cmd_addowner(m: types.Message):
                  "VALUES(?,?,?,?)", (uid, "owner", now_str(), m.from_user.id))
     conn.commit()
     if uid not in OWNER_IDS: OWNER_IDS.append(uid)
-    await m.answer(f"👑 Owner added: <code>{uid}</code>")
+    await m.answer(f"👑 Owner: <code>{uid}</code>")
 
 @dp.message(Command("addhelper"))
 async def cmd_addhelper(m: types.Message):
@@ -2055,7 +1812,7 @@ async def cmd_addhelper(m: types.Message):
                  "VALUES(?,?,?,?)", (uid, "helper", now_str(), m.from_user.id))
     conn.commit()
     if uid not in HELPERS: HELPERS.append(uid)
-    await m.answer(f"🛡 Helper added: <code>{uid}</code>")
+    await m.answer(f"🛡 Helper: <code>{uid}</code>")
 
 @dp.message(Command("removeowner"))
 async def cmd_removeowner(m: types.Message):
@@ -2063,7 +1820,7 @@ async def cmd_removeowner(m: types.Message):
     try: uid = int(m.text.split()[1])
     except Exception: await m.answer("Usage: /removeowner UID"); return
     if uid == OWNER_ID: await m.answer("❌ Cannot remove main"); return
-    conn.execute("DELETE FROM owners WHERE user_id=?", (uid,)); conn.commit()
+    conn.execute("DELETE FROM owners WHERE user_id=?",(uid,)); conn.commit()
     if uid in OWNER_IDS: OWNER_IDS.remove(uid)
     if uid in HELPERS: HELPERS.remove(uid)
     await m.answer(f"✅ Removed <code>{uid}</code>")
@@ -2084,7 +1841,6 @@ async def cmd_unban(m: types.Message):
     conn.execute("UPDATE users SET banned=0 WHERE user_id=?",(uid,)); conn.commit()
     await m.answer(f"✅ Unbanned <code>{uid}</code>")
 
-# ---------------- TICKETS ----------------
 @dp.callback_query(F.data == "o_tickets")
 async def o_tickets(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
@@ -2097,11 +1853,26 @@ async def o_tickets(c: types.CallbackQuery):
     kb = []
     for tid,uid,msg,st,tm in rows:
         em = "🔵" if st=="open" else "✅"
-        text += f"{em} <b>#{tid}</b> 👤<code>{uid}</code>\n💬 {msg[:70]}\n🕒 {tm}\n\n"
+        text += f"{em} #{tid} 👤<code>{uid}</code>\n💬 {msg[:70]}\n🕒 {tm}\n\n"
         kb.append([IKB(text=f"{em} #{tid}",
                        callback_data=f"treply:{tid}" if st=="open" else f"tv:{tid}")])
     kb.append([IKB(text="🔙 Admin", callback_data="admin_home")])
     await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=kb))
+    await c.answer()
+
+@dp.callback_query(F.data.startswith("tv:"))
+async def ticket_view(c: types.CallbackQuery):
+    if not is_owner(c.from_user.id): return
+    tid = int(c.data.split(":")[1])
+    r = conn.execute("SELECT user_id,message,reply,status,created_at,replied_at "
+                     "FROM tickets WHERE id=?",(tid,)).fetchone()
+    if not r: await c.answer("N/A", show_alert=True); return
+    text = (f"🎫 <b>Ticket #{tid}</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👤 <code>{r[0]}</code>\nStatus: <b>{r[3]}</b>\n🕒 {r[4]}\n\n💬 {r[1]}\n")
+    if r[2]: text += f"\n↩️ {r[2]}\n🕒 {r[5]}"
+    await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=[
+        [IKB(text="✉️ Reply", callback_data=f"treply:{tid}")],
+        [IKB(text="🔙 Tickets", callback_data="o_tickets")]]))
     await c.answer()
 
 # ==========================================================
@@ -2128,20 +1899,16 @@ async def reminder_loop():
             await asyncio.sleep(1800)
             cutoff = (datetime.datetime.now() -
                       datetime.timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
-            rows = conn.execute("""
-                SELECT id,user_id,accounts,members,created_at FROM orders
-                WHERE status='pending' AND created_at < ?
-                LIMIT 10""", (cutoff,)).fetchall()
+            rows = conn.execute("""SELECT id,user_id,accounts,members,created_at FROM orders
+                WHERE status='pending' AND created_at < ? LIMIT 10""", (cutoff,)).fetchall()
             for oid,uid,accs,mem,ct in rows:
                 for o_id in OWNER_IDS:
                     try:
                         await bot.send_message(o_id,
-                            f"⏰ <b>REMINDER</b>\n"
-                            f"📦 Order <b>#{oid}</b> pending\n"
+                            f"⏰ <b>REMINDER</b>\n📦 #{oid} pending\n"
                             f"👤 <code>{uid}</code>\n📱 {accs} | 👥 {mem}\n🕒 {ct}",
                             reply_markup=IKM(inline_keyboard=[[
-                                IKB(text="▶️ View", callback_data=f"vieword:{oid}")
-                            ]]))
+                                IKB(text="▶️ View", callback_data=f"vieword:{oid}")]]))
                     except Exception: pass
                 await asyncio.sleep(0.5)
         except Exception as e:
