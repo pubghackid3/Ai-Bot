@@ -1,7 +1,7 @@
 # ==========================================================
-#   👑 PROFESSIONAL TELEGRAM BOT — FULL FIXED
+#   👑 PROFESSIONAL TELEGRAM BOT — ANTI-CONFLICT EDITION
 #   Owner: @Ghost_Code_404  |  Channel: @ToolsByRehan
-#   No animations — instant response
+#   Fixes: Single instance lock, no polling conflicts
 # ==========================================================
 import sys, subprocess, importlib
 
@@ -13,7 +13,7 @@ for _pkg in ["aiogram==3.7.0", "telethon==1.36.0", "cryptography==42.0.8"]:
         print(f"📦 Installing {_pkg}...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", _pkg])
 
-import os, io, csv, sqlite3, datetime, logging, time, asyncio
+import os, io, csv, sqlite3, datetime, logging, time, asyncio, socket
 from aiogram import Bot, Dispatcher, F, types, BaseMiddleware
 from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import Command
@@ -54,8 +54,42 @@ FLOOD_LIMIT, FLOOD_WINDOW, FLOOD_MUTE_TIME = 8, 10, 300
 OWNER_IDS = [OWNER_ID]; HELPERS = []
 FLOOD_CACHE: dict = {}; FLOOD_MUTED: dict = {}
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s | %(levelname)s | %(message)s")
 
+# ==========================================================
+#          🔒 SINGLE-INSTANCE LOCK (Anti-Conflict)
+# ==========================================================
+LOCK_SOCKET = None
+
+def acquire_single_instance_lock(port=45999):
+    """Prevent multiple bot instances using a socket lock."""
+    global LOCK_SOCKET
+    try:
+        LOCK_SOCKET = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        LOCK_SOCKET.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        LOCK_SOCKET.bind(("127.0.0.1", port))
+        LOCK_SOCKET.listen(1)
+        logging.info("🔒 Single-instance lock acquired.")
+        return True
+    except OSError:
+        logging.error("❌ Another instance is already running. Exiting.")
+        print("\n" + "="*60)
+        print("❌ ERROR: Another bot instance is already running!")
+        print("="*60)
+        print("This usually means:")
+        print("  • Railway has multiple replicas running")
+        print("  • Or a local copy is also running")
+        print("\nFIX:")
+        print("  1. Railway → Settings → Replicas = 1")
+        print("  2. Stop any local bot processes")
+        print("  3. Or revoke bot token via @BotFather")
+        print("="*60 + "\n")
+        sys.exit(1)
+
+# ==========================================================
+#                    🔑 FERNET KEY
+# ==========================================================
 _env = os.getenv("FERNET_KEY")
 if _env:
     FERNET_KEY = _env.encode()
@@ -67,9 +101,12 @@ else:
         FERNET_KEY = Fernet.generate_key()
         try: open(_kf, "wb").write(FERNET_KEY)
         except Exception: pass
-        logging.warning(f"FERNET_KEY: {FERNET_KEY.decode()}")
+        logging.warning(f"NEW FERNET_KEY (save it!): {FERNET_KEY.decode()}")
 cipher = Fernet(FERNET_KEY)
 
+# ==========================================================
+#                    🤖 BOT SETUP
+# ==========================================================
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp  = Dispatcher(storage=MemoryStorage())
 CLIENTS: dict = {}
@@ -450,12 +487,8 @@ class TicketFlow(StatesGroup):
     message=State(); reply=State()
 
 # ==========================================================
-#       🎨 COLORFUL KEYBOARDS (Telegram auto-colors)
+#       🎨 KEYBOARDS (Telegram auto-colors from first emoji)
 # ==========================================================
-# Emoji → Color mapping (Telegram auto):
-# ✅ green · ❌ red · 📱 blue · 💰 gold · 🎁 pink
-# 🛎 orange · ⚙️ gray · 🎫 orange · 📢 blue · 🔙 gray
-
 def lang_kb():
     return IKM(inline_keyboard=[
         [IKB(text="English",       callback_data="setlang:en")],
@@ -468,12 +501,12 @@ def lang_kb():
 
 def user_menu(lang, uid=None):
     return IKM(inline_keyboard=[
-        [IKB(text="📱  My Accounts",       callback_data="menu_accounts")],   # blue
-        [IKB(text="📦  Orders",            callback_data="menu_orders")],     # blue
-        [IKB(text="💰  Wallet & Points",   callback_data="menu_wallet")],     # gold
-        [IKB(text="🛎  Support & Help",    callback_data="menu_support")],    # orange
-        [IKB(text="⚙️  Settings",          callback_data="menu_settings"),    # gray
-         IKB(text="📖  Guide",              callback_data="help")],            # blue
+        [IKB(text="📱  My Accounts",       callback_data="menu_accounts")],
+        [IKB(text="📦  Orders",            callback_data="menu_orders")],
+        [IKB(text="💰  Wallet & Points",   callback_data="menu_wallet")],
+        [IKB(text="🛎  Support & Help",    callback_data="menu_support")],
+        [IKB(text="⚙️  Settings",          callback_data="menu_settings"),
+         IKB(text="📖  Guide",              callback_data="help")],
     ])
 
 
@@ -481,24 +514,24 @@ def accounts_menu(lang, uid):
     accs = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?", (uid,)).fetchone()[0] if uid else 0
     ready = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=? AND target_link IS NOT NULL", (uid,)).fetchone()[0] if uid else 0
     return IKM(inline_keyboard=[
-        [IKB(text="➕  Add New Account",                callback_data="add_acc")],        # green
-        [IKB(text=f"📊  My Linked Accounts ({accs})",   callback_data="my_accs")],        # blue
-        [IKB(text=f"🎯  Set Target Group ({ready}/{accs})", callback_data="pick_target")],# yellow
-        [IKB(text="🏠  Set Your Own Group",              callback_data="pick_own")],       # orange
-        [IKB(text="🔙  Back",                            callback_data="menu")],           # gray
+        [IKB(text="➕  Add New Account",                callback_data="add_acc")],
+        [IKB(text=f"📊  My Linked Accounts ({accs})",   callback_data="my_accs")],
+        [IKB(text=f"🎯  Set Target Group ({ready}/{accs})", callback_data="pick_target")],
+        [IKB(text="🏠  Set Your Own Group",              callback_data="pick_own")],
+        [IKB(text="🔙  Back",                            callback_data="menu")],
     ])
 
 
 def orders_menu(lang, uid):
     rows = [
-        [IKB(text="✅  Submit New Order",     callback_data="submit")],       # green
-        [IKB(text="💎  Free Order (Points)",  callback_data="free_order")],   # blue
+        [IKB(text="✅  Submit New Order",     callback_data="submit")],
+        [IKB(text="💎  Free Order (Points)",  callback_data="free_order")],
     ]
     if uid and trial_available(uid):
-        rows.append([IKB(text=f"🎁  Free Trial ({TRIAL_MEMBERS} members)", callback_data="free_trial")])  # pink
+        rows.append([IKB(text=f"🎁  Free Trial ({TRIAL_MEMBERS} members)", callback_data="free_trial")])
     rows.extend([
-        [IKB(text="📜  Order History",  callback_data="history")],     # blue
-        [IKB(text="🔙  Back",            callback_data="menu")],        # gray
+        [IKB(text="📜  Order History",  callback_data="history")],
+        [IKB(text="🔙  Back",            callback_data="menu")],
     ])
     return IKM(inline_keyboard=rows)
 
@@ -507,41 +540,39 @@ def wallet_menu(lang, uid):
     pts = get_points(uid) if uid else 0
     members = pts // POINTS_PER_MEMBER
     return IKM(inline_keyboard=[
-        [IKB(text=f"💰  Balance: {pts} pts  ({members} members)", callback_data="my_points")],  # gold
-        [IKB(text="💳  Buy Members",    callback_data="buy_members")],   # gold
-        [IKB(text="🎁  Refer & Earn",   callback_data="referral")],      # pink
-        [IKB(text="🎟  Redeem Coupon",  callback_data="redeem_prompt")], # orange
-        [IKB(text="🔙  Back",            callback_data="menu")],          # gray
+        [IKB(text=f"💰  Balance: {pts} pts  ({members} members)", callback_data="my_points")],
+        [IKB(text="💳  Buy Members",    callback_data="buy_members")],
+        [IKB(text="🎁  Refer & Earn",   callback_data="referral")],
+        [IKB(text="🎟  Redeem Coupon",  callback_data="redeem_prompt")],
+        [IKB(text="🔙  Back",            callback_data="menu")],
     ])
 
 
 def support_menu(lang):
     return IKM(inline_keyboard=[
-        [IKB(text="🛎  Contact Support", url=f"https://t.me/{CUSTOMER_SERVICE}")],  # orange
-        [IKB(text="📢  Our Channel",     url=CHANNEL_LINK)],                       # blue
-        [IKB(text="🔙  Back",            callback_data="menu")],                    # gray
+        [IKB(text="🛎  Contact Support", url=f"https://t.me/{CUSTOMER_SERVICE}")],
+        [IKB(text="📢  Our Channel",     url=CHANNEL_LINK)],
+        [IKB(text="🔙  Back",            callback_data="menu")],
     ])
 
 
 def settings_menu(lang):
     return IKM(inline_keyboard=[
-        [IKB(text="🌐  Change Language", callback_data="change_lang")],   # blue
-        [IKB(text="👤  My Profile",       callback_data="my_profile")],    # blue
-        [IKB(text="📊  My Statistics",    callback_data="my_stats")],      # blue
-        [IKB(text="🔙  Back",             callback_data="menu")],           # gray
+        [IKB(text="🌐  Change Language", callback_data="change_lang")],
+        [IKB(text="👤  My Profile",       callback_data="my_profile")],
+        [IKB(text="📊  My Statistics",    callback_data="my_stats")],
+        [IKB(text="🔙  Back",             callback_data="menu")],
     ])
 
 
 def cancel_kb(lang):
-    return IKM(inline_keyboard=[
-        [IKB(text="❌  Cancel", callback_data="cancel")],   # red
-    ])
+    return IKM(inline_keyboard=[[IKB(text="❌  Cancel", callback_data="cancel")]])
 
 
 def free_confirm_kb(lang):
     return IKM(inline_keyboard=[
-        [IKB(text="✅  Confirm Order", callback_data="free_yes")],   # green
-        [IKB(text="❌  Cancel",         callback_data="free_no")],    # red
+        [IKB(text="✅  Confirm Order", callback_data="free_yes")],
+        [IKB(text="❌  Cancel",         callback_data="free_no")],
     ])
 
 
@@ -575,14 +606,13 @@ def order_status_kb(oid):
 
 
 def admin_back_kb():
-    return IKM(inline_keyboard=[
-        [IKB(text="🔙  Admin Panel", callback_data="admin_home")]])
+    return IKM(inline_keyboard=[[IKB(text="🔙  Admin Panel", callback_data="admin_home")]])
 
 
 def force_join_kb(missing):
     return IKM(inline_keyboard=[
-        [IKB(text="📢  Join Our Channel", url=CHANNEL_LINK)],       # blue link
-        [IKB(text="✅  Verify & Continue", callback_data="verify_join")],  # green
+        [IKB(text="📢  Join Our Channel", url=CHANNEL_LINK)],
+        [IKB(text="✅  Verify & Continue", callback_data="verify_join")],
     ])
 
 
@@ -704,7 +734,6 @@ async def cmd_start(m: types.Message, state: FSMContext):
             "Then tap Verify button below.",
             reply_markup=force_join_kb(missing))
         return
-    # No animation — direct message
     await m.answer(welcome + "\n\n" + t(lg,"menu_title"),
                    reply_markup=user_menu(lg, uid=m.from_user.id))
 
@@ -715,7 +744,6 @@ async def verify_join(c: types.CallbackQuery):
         await c.answer("❌ Pehle channel join karein!", show_alert=True); return
     lg = get_lang(c.from_user.id)
     welcome = get_welcome(lg, c.from_user.first_name)
-    # No animation — direct
     try:
         await c.message.edit_text(welcome + "\n\n" + t(lg,"menu_title"),
                                   reply_markup=user_menu(lg, uid=c.from_user.id))
@@ -929,7 +957,7 @@ async def acc_phone(m: types.Message, state: FSMContext):
     if exists:
         await m.answer(t(lg,"phone_used", phone=phone))
         await state.clear(); return
-    msg = await m.answer("⏳ Connecting to Telegram...")
+    msg = await m.answer("⏳ Connecting...")
     client = TelegramClient(StringSession(), API_ID, API_HASH)
     try:
         await client.connect()
@@ -2065,17 +2093,32 @@ async def backup_loop():
 # ==========================================================
 async def main():
     global OWNER_GROUP_ID
+
+    # 🔒 First, acquire single instance lock
+    acquire_single_instance_lock()
+
     stored = get_setting("owner_group_id")
     if stored:
         try: OWNER_GROUP_ID = int(stored)
         except Exception: pass
+
     logging.info("🤖 Professional Bot started.")
     logging.info(f"👑 Owner: {OWNER_ID}")
     logging.info(f"📢 Channel: {CHANNEL_LINK}")
     logging.info(f"🛎 Support: @{CUSTOMER_SERVICE}")
-    await bot.delete_webhook(drop_pending_updates=True)
+
+    # ✅ Drop any pending updates to avoid conflicts
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+    except Exception as e:
+        logging.warning(f"delete_webhook: {e}")
+
     asyncio.create_task(backup_loop())
-    await dp.start_polling(bot)
+
+    # ✅ Skip old updates to avoid duplicate processing
+    await dp.start_polling(bot,
+        skip_updates=True,
+        allowed_updates=dp.resolve_used_update_types())
 
 if __name__ == "__main__":
     asyncio.run(main())
