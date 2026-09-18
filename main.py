@@ -1,7 +1,18 @@
 # ==========================================================
-#   👑 PROFESSIONAL TELEGRAM BOT — ALL FEATURES
+#   👑 PROFESSIONAL TELEGRAM BOT — ULTIMATE EDITION
 #   Owner: @Ghost_Code_404  |  Channel: @ToolsByRehan
 # ==========================================================
+import sys, subprocess, importlib
+
+# ---- AUTO-INSTALL DEPENDENCIES ----
+for _pkg in ["aiogram==3.7.0", "telethon==1.36.0", "cryptography==42.0.8"]:
+    _mod = _pkg.split("==")[0]
+    try:
+        importlib.import_module(_mod)
+    except ImportError:
+        print(f"📦 Installing {_pkg}...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", _pkg])
+
 import os, io, csv, sqlite3, datetime, logging, time, asyncio, random
 from aiogram import Bot, Dispatcher, F, types, BaseMiddleware
 from aiogram.client.default import DefaultBotProperties
@@ -45,11 +56,14 @@ FLOOD_CACHE: dict = {}; FLOOD_MUTED: dict = {}
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 
+# ---- Fernet key ----
 _env = os.getenv("FERNET_KEY")
-if _env: FERNET_KEY = _env.encode()
+if _env:
+    FERNET_KEY = _env.encode()
 else:
     _kf = ".fernet_key"
-    if os.path.exists(_kf): FERNET_KEY = open(_kf, "rb").read().strip()
+    if os.path.exists(_kf):
+        FERNET_KEY = open(_kf, "rb").read().strip()
     else:
         FERNET_KEY = Fernet.generate_key()
         try: open(_kf, "wb").write(FERNET_KEY)
@@ -61,18 +75,16 @@ bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp  = Dispatcher(storage=MemoryStorage())
 CLIENTS: dict = {}
 
-SPINNER  = ["🕐","🕑","🕒","🕓","🕔","🕕","🕖","🕗","🕘","🕙","🕚","🕛"]
-PROGRESS = ["░░░░░░░░░░","█░░░░░░░░░","██░░░░░░░░","███░░░░░░░",
-            "████░░░░░░","█████░░░░░","██████░░░░","███████░░░",
-            "████████░░","█████████░","██████████"]
-
 # ==========================================================
 #                    🌐 TRANSLATIONS
 # ==========================================================
 WELCOME = {
-"en": ("╔══════════════════════════╗\n║   ✨  𝐖 𝐄 𝐋 𝐂 𝐎 𝐌 𝐄  ✨   ║\n"
-       "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n╚══════════════════════════╝\n\n"
-       "👋 <b>Hello</b>, <i>{name}</i>!\n🎯 <b>Your Telegram Manager Bot</b>\n\n"
+"en": ("╔══════════════════════════╗\n"
+       "║   ✨  𝐖 𝐄 𝐋 𝐂 𝐎 𝐌 𝐄  ✨   ║\n"
+       "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n"
+       "╚══════════════════════════╝\n\n"
+       "👋 <b>Hello</b>, <i>{name}</i>!\n"
+       "🎯 <b>Your Telegram Manager Bot</b>\n\n"
        "━━━━━━━━━━━━━━━━━━━━━━\n"
        "💎 Link unlimited accounts\n"
        "🎯 Set targets easily\n"
@@ -82,52 +94,62 @@ WELCOME = {
        "🌐 5 languages supported\n"
        "━━━━━━━━━━━━━━━━━━━━━━\n"
        "✨ Let's get started! 👇"),
-"ur": ("╔══════════════════════════╗\n║   ✨  𝐗𝐎𝐒𝐇 𝐀𝐀𝐌𝐃𝐄𝐄𝐃  ✨   ║\n"
-       "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n╚══════════════════════════╝\n\n"
-       "👋 <b>السلام علیکم</b>، <i>{name}</i>!\n🎯 <b>آپ کا ٹیلیگرام منیجر بوٹ</b>\n\n"
+"ur": ("╔══════════════════════════╗\n"
+       "║   ✨  𝐗𝐎𝐒𝐇 𝐀𝐀𝐌𝐃𝐄𝐄𝐃  ✨   ║\n"
+       "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n"
+       "╚══════════════════════════╝\n\n"
+       "👋 <b>السلام علیکم</b>، <i>{name}</i>!\n"
+       "🎯 <b>آپ کا ٹیلیگرام منیجر بوٹ</b>\n\n"
        "━━━━━━━━━━━━━━━━━━━━━━\n"
        "💎 لا محدود اکاؤنٹس\n🎯 آسان ٹارگٹ سیٹنگ\n"
        "💰 ریفرل سے پوائنٹس\n🎁 فری ممبرز\n"
        "💳 ممبرز خریدیں\n🌐 5 زبانیں\n"
-       "━━━━━━━━━━━━━━━━━━━━━━\n✨ چلیے شروع کریں! 👇"),
-"hi": ("╔══════════════════════════╗\n║   ✨  𝐒𝐖𝐀𝐆𝐀𝐓 𝐇𝐀𝐈  ✨   ║\n"
-       "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n╚══════════════════════════╝\n\n"
-       "👋 <b>नमस्ते</b>, <i>{name}</i>!\n🎯 <b>आपका टेलीग्राम मैनेजर बॉट</b>\n\n"
+       "━━━━━━━━━━━━━━━━━━━━━━\n"
+       "✨ چلیے شروع کریں! 👇"),
+"hi": ("╔══════════════════════════╗\n"
+       "║   ✨  𝐒𝐖𝐀𝐆𝐀𝐓 𝐇𝐀𝐈  ✨   ║\n"
+       "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n"
+       "╚══════════════════════════╝\n\n"
+       "👋 <b>नमस्ते</b>, <i>{name}</i>!\n"
+       "🎯 <b>आपका टेलीग्राम मैनेजर बॉट</b>\n\n"
        "━━━━━━━━━━━━━━━━━━━━━━\n"
        "💎 असीमित अकाउंट\n🎯 आसान टार्गेट\n"
        "💰 रेफरल पॉइंट्स\n🎁 फ्री मेंबर\n"
        "💳 मेंबर खरीदें\n🌐 5 भाषाएं\n"
-       "━━━━━━━━━━━━━━━━━━━━━━\n✨ चलिए शुरू करें! 👇"),
-"rom_ur": ("╔══════════════════════════╗\n║   ✨  𝐊𝐇𝐔𝐒𝐇 𝐀𝐀𝐌𝐃𝐄𝐄𝐃  ✨   ║\n"
-       "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n╚══════════════════════════╝\n\n"
-       "👋 <b>Assalam-o-Alaikum</b>, <i>{name}</i>!\n🎯 <b>Aap ka Telegram Manager Bot</b>\n\n"
+       "━━━━━━━━━━━━━━━━━━━━━━\n"
+       "✨ चलिए शुरू करें! 👇"),
+"rom_ur": ("╔══════════════════════════╗\n"
+       "║   ✨  𝐊𝐇𝐔𝐒𝐇 𝐀𝐀𝐌𝐃𝐄𝐄𝐃  ✨   ║\n"
+       "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n"
+       "╚══════════════════════════╝\n\n"
+       "👋 <b>Assalam-o-Alaikum</b>, <i>{name}</i>!\n"
+       "🎯 <b>Aap ka Telegram Manager Bot</b>\n\n"
        "━━━━━━━━━━━━━━━━━━━━━━\n"
        "💎 Unlimited accounts\n🎯 Aasan target\n"
        "💰 Referral points\n🎁 Free members\n"
        "💳 Buy members\n🌐 5 zabanain\n"
-       "━━━━━━━━━━━━━━━━━━━━━━\n✨ Chalein shuru karein! 👇"),
-"ar": ("╔══════════════════════════╗\n║   ✨  𝐖 𝐄 𝐋 𝐂 𝐎 𝐌 𝐄  ✨   ║\n"
-       "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n╚══════════════════════════╝\n\n"
-       "👋 <b>مرحباً</b>، <i>{name}</i>!\n🎯 <b>بوت إدارة تيليجرام</b>\n\n"
+       "━━━━━━━━━━━━━━━━━━━━━━\n"
+       "✨ Chalein shuru karein! 👇"),
+"ar": ("╔══════════════════════════╗\n"
+       "║   ✨  𝐖 𝐄 𝐋 𝐂 𝐎 𝐌 𝐄  ✨   ║\n"
+       "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n"
+       "╚══════════════════════════╝\n\n"
+       "👋 <b>مرحباً</b>، <i>{name}</i>!\n"
+       "🎯 <b>بوت إدارة تيليجرام</b>\n\n"
        "━━━━━━━━━━━━━━━━━━━━━━\n"
        "💎 اربط حسابات\n🎯 عيّن الأهداف\n"
        "💰 نقاط الإحالة\n🎁 أعضاء مجاناً\n"
        "💳 شراء أعضاء\n🌐 5 لغات\n"
-       "━━━━━━━━━━━━━━━━━━━━━━\n✨ هيّا نبدأ! 👇"),
+       "━━━━━━━━━━━━━━━━━━━━━━\n"
+       "✨ هيّا نبدأ! 👇"),
 }
 
 TEXTS = {
 "en": {
- "menu_title":"🏠 <b>𝐌𝐀𝐈𝐍 𝐌𝐄𝐍𝐔</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👇 <i>Choose an option</i>",
+ "menu_title":"🏠 <b>𝐃𝐀𝐒𝐇𝐁𝐎𝐀𝐑𝐃</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👇 <i>Choose an option</i>",
  "choose_language":"🌐 <b>𝐒𝐄𝐋𝐄𝐂𝐓 𝐋𝐀𝐍𝐆𝐔𝐀𝐆𝐄</b>\n👇 <i>Pick language:</i>",
  "language_set":"✨ <b>Language Set</b> ✨\n✅ Now: <b>🇬🇧 English</b>",
- "btn_add":"➕  Add Account","btn_my":"📊  My Accounts","btn_submit":"📦  Submit Order",
- "btn_members":"👥  Members","btn_history":"📜  History","btn_refer":"🎁  Refer & Earn",
- "btn_ticket":"🎫  Support","btn_support":"🛎  Customer Service","btn_lang":"🌐  Language",
- "btn_help":"❓  Help","btn_menu":"🏠  Menu","btn_cancel":"❌  Cancel",
- "btn_free":"💎  Free Order","btn_points":"💰  My Points","btn_trial":"🎁  Free Trial (5)",
- "btn_coupon":"🎟  Redeem Coupon","btn_buy":"💳  Buy Members",
- "btn_channel":"📢  Our Channel","btn_share":"📤  Share Bot",
+ "btn_back":"🔙  Back","btn_cancel":"❌  Cancel","btn_menu":"🏠  Dashboard",
  "add_title":"➕ <b>ADD ACCOUNT</b>",
  "add_guide":"📖 Send your Telegram phone number.\n✍️ Example: <code>+923001234567</code>\n⚠️ Each number once.",
  "otp_guide":"📩 <b>Code sent!</b>\n✍️ Enter code.",
@@ -173,15 +195,9 @@ TEXTS = {
  "owner_msg_custom":"📩 <b>Support</b>\n\n{msg}",
 },
 "ur": {
- "menu_title":"🏠 <b>مین مینو</b>\n👇 آپشن منتخب کریں",
+ "menu_title":"🏠 <b>𝐃𝐀𝐒𝐇𝐁𝐎𝐀𝐑𝐃</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👇 <i>آپشن منتخب کریں</i>",
  "choose_language":"🌐 <b>زبان منتخب کریں</b>","language_set":"✨ <b>زبان سیٹ</b> ✨\n✅ اردو",
- "btn_add":"➕  اکاؤنٹ شامل","btn_my":"📊  میرے اکاؤنٹس","btn_submit":"📦  آرڈر بھیجیں",
- "btn_members":"👥  ممبرز","btn_history":"📜  ہسٹری","btn_refer":"🎁  ریفر",
- "btn_ticket":"🎫  سپورٹ","btn_support":"🛎  کسٹمر سروس","btn_lang":"🌐  زبان",
- "btn_help":"❓  مدد","btn_menu":"🏠  مینو","btn_cancel":"❌  منسوخ",
- "btn_free":"💎  فری آرڈر","btn_points":"💰  پوائنٹس","btn_trial":"🎁  فری ٹرائل",
- "btn_coupon":"🎟  کوپن","btn_buy":"💳  ممبرز خریدیں",
- "btn_channel":"📢  ہمارا چینل","btn_share":"📤  بوٹ شیئر",
+ "btn_back":"🔙  واپس","btn_cancel":"❌  منسوخ","btn_menu":"🏠  ڈیش بورڈ",
  "add_title":"➕ <b>اکاؤنٹ شامل</b>","add_guide":"📖 نمبر بھیجیں۔\n✍️ <code>+923001234567</code>",
  "otp_guide":"📩 <b>کوڈ بھیج دیا!</b>","pwd_guide":"🔐 <b>2FA پاس ورڈ</b>",
  "linked_ok":"✅ <b>شامل ہو گیا</b>\n📱 <code>{phone}</code>",
@@ -199,17 +215,15 @@ TEXTS = {
  "members_title":"👥 <b>ممبرز</b>",
  "members_body":"📊 1 اکاؤنٹ = {rate} ممبرز\n💎 {ppm} پوائنٹس = 1 ممبر\n📱 {accounts}\n💰 {points}",
  "help_title":"❓ <b>مدد</b>",
- "help_body":"1️⃣ اکاؤنٹ\n2️⃣ ٹارگٹ\n3️⃣ آرڈر\n\n🎁 ریفر → +100\n💎 2 = 1\n\n💳 ممبرز خریدیں: سپورٹ\n\n🛎 @{support}",
+ "help_body":"1️⃣ اکاؤنٹ\n2️⃣ ٹارگٹ\n3️⃣ آرڈر\n\n🎁 ریفر → +100\n💎 2 = 1\n\n💳 ممبرز خریدیں\n\n🛎 @{support}",
  "invalid_link":"❌ لنک","invalid_phone":"❌ نمبر","cancelled":"❌ <b>منسوخ</b>",
  "banned":"🚫 بلاک","rate_limited":"⏳",
  "ref_title":"🎁 <b>ریفر کریں</b>",
  "ref_body":"🔗 <code>{link}</code>\n\n💰 {points}\n👥 {refs}\n\n💡 دوست پہلا اکاؤنٹ → +{reward}",
  "ref_reward":"🎉 <b>+{pts} پوائنٹس!</b>\n{name}\n💰 کل: {total}",
  "new_ref_notice":"👋 ریفرر کو <b>{pts}</b> ملیں گے۔",
- "points_title":"💰 <b>پوائنٹس</b>",
- "points_body":"💰 {points}\n💎 {ppm}=1\n👥 {members}",
- "free_title":"💎 <b>فری آرڈر</b>","free_intro":"📖 ٹارگٹ لنک:",
- "free_own":"✅ اپنا گروپ لنک:",
+ "points_title":"💰 <b>پوائنٹس</b>","points_body":"💰 {points}\n💎 {ppm}=1\n👥 {members}",
+ "free_title":"💎 <b>فری آرڈر</b>","free_intro":"📖 ٹارگٹ لنک:","free_own":"✅ اپنا گروپ لنک:",
  "free_amount":"👥 تعداد؟\n💎 {ppm}/ممبر\n💰 {points}\n✍️ <code>25</code>",
  "free_no_points":"❌ کم\n💰 {points}\n💎 چاہیے: {need}","free_invalid_num":"❌",
  "free_confirm":"💎 تصدیق\n👥 {members}\n💰 {cost}\nباقی: {remaining}\n🎯 {target}\n🏠 {own}",
@@ -218,22 +232,16 @@ TEXTS = {
  "ticket_title":"🎫 <b>ٹکٹ</b>","ticket_guide":"✍️ مسئلہ لکھیں۔","ticket_sent":"✅ #{id}",
  "coupon_prompt":"🎟 <code>/redeem CODE</code>",
  "buy_title":"💳 <b>ممبرز خریدیں</b>",
- "buy_body":"💎 <b>کیسے خریدیں:</b>\n━━━━━━━━━━━━━━━━━━━━\n\n1️⃣ سپورٹ سے رابطہ\n2️⃣ پیمنٹ بھیجیں\n3️⃣ پوائنٹس آ جائیں گے\n4️⃣ ممبرز آرڈر کریں!\n\n💰 {ppm} پوائنٹس = 1 ممبر\n\n🎯 <b>آپ کو ملے گا:</b>\n• 📱 اصلی ممبرز\n• ⚡ تیز ڈیلیوری\n• 🔒 100% محفوظ\n\n🛎 @{support}",
+ "buy_body":"💎 کیسے خریدیں:\n1️⃣ سپورٹ سے رابطہ\n2️⃣ پیمنٹ\n3️⃣ پوائنٹس\n4️⃣ ممبرز آرڈر\n\n💰 {ppm} پوائنٹس = 1 ممبر\n\n🛎 @{support}",
  "owner_msg_status":"📢 #{id}: {status}\n{note}","owner_msg_custom":"📩 {msg}",
 },
 "hi": {
- "menu_title":"🏠 <b>मेन्यू</b>","choose_language":"🌐 <b>भाषा चुनें</b>",
- "language_set":"✅ हिंदी","btn_add":"➕  जोड़ें","btn_my":"📊  अकाउंट",
- "btn_submit":"📦  ऑर्डर","btn_members":"👥  मेंबर","btn_history":"📜  हिस्ट्री",
- "btn_refer":"🎁  रेफर","btn_ticket":"🎫  सपोर्ट","btn_support":"🛎  सर्विस",
- "btn_lang":"🌐  भाषा","btn_help":"❓  मदद","btn_menu":"🏠  मेन्यू","btn_cancel":"❌  रद्द",
- "btn_free":"💎  फ्री ऑर्डर","btn_points":"💰  पॉइंट्स","btn_trial":"🎁  ट्रायल",
- "btn_coupon":"🎟  कूपन","btn_buy":"💳  मेंबर खरीदें",
- "btn_channel":"📢  चैनल","btn_share":"📤  शेयर",
- "add_title":"➕","add_guide":"📖 नंबर भेजें।",
- "otp_guide":"📩 कोड!","pwd_guide":"🔐 2FA","linked_ok":"✅ {phone}",
- "phone_used":"❌ लिंक है","target_title":"🎯","target_guide":"📖 t.me/...",
- "target_saved":"✅ {link}","own_title":"🏠","own_guide":"📖 t.me/...","own_saved":"✅ {link}",
+ "menu_title":"🏠 <b>डैशबोर्ड</b>\n👇 चुनें","choose_language":"🌐 <b>भाषा चुनें</b>",
+ "language_set":"✅ हिंदी","btn_back":"🔙  वापस","btn_cancel":"❌  रद्द","btn_menu":"🏠  डैशबोर्ड",
+ "add_title":"➕","add_guide":"📖 नंबर भेजें।","otp_guide":"📩 कोड!","pwd_guide":"🔐 2FA",
+ "linked_ok":"✅ {phone}","phone_used":"❌ लिंक है",
+ "target_title":"🎯","target_guide":"📖 t.me/...","target_saved":"✅ {link}",
+ "own_title":"🏠","own_guide":"📖 t.me/...","own_saved":"✅ {link}",
  "my_title":"📊","no_accounts":"❌","submit_title":"📦","submit_no_acc":"❌",
  "submit_incomplete":"⚠️","history_title":"📜","history_empty":"❌",
  "status_pending":"⏳","status_process":"🔄","status_complete":"✅","status_rejected":"❌",
@@ -248,22 +256,16 @@ TEXTS = {
  "free_confirm":"{members}/{cost}/{remaining}","free_done":"🎉{members}/{cost}/{remaining}",
  "btn_confirm":"✅","btn_edit":"✏️","ticket_title":"🎫","ticket_guide":"✍️",
  "ticket_sent":"✅#{id}","coupon_prompt":"🎟 /redeem CODE",
- "buy_title":"💳 मेंबर","buy_body":"💎\n1️⃣ 2️⃣ 3️⃣ 4️⃣\n{ppm}=1\n🛎 @{support}",
+ "buy_title":"💳","buy_body":"💎\n{ppm}=1\n🛎 @{support}",
  "owner_msg_status":"📢{id}:{status}","owner_msg_custom":"📩{msg}",
 },
 "rom_ur": {
- "menu_title":"🏠 <b>MAIN MENU</b>","choose_language":"🌐 <b>Zaban chunein</b>",
- "language_set":"✅ Roman Urdu","btn_add":"➕  Account","btn_my":"📊  Accounts",
- "btn_submit":"📦  Order","btn_members":"👥  Members","btn_history":"📜  History",
- "btn_refer":"🎁  Refer","btn_ticket":"🎫  Support","btn_support":"🛎  Service",
- "btn_lang":"🌐  Zaban","btn_help":"❓  Madad","btn_menu":"🏠  Menu","btn_cancel":"❌  Cancel",
- "btn_free":"💎  Free Order","btn_points":"💰  Points","btn_trial":"🎁  Trial",
- "btn_coupon":"🎟  Coupon","btn_buy":"💳  Buy Members",
- "btn_channel":"📢  Channel","btn_share":"📤  Share",
- "add_title":"➕","add_guide":"📖 Number bhejein.",
- "otp_guide":"📩 Code!","pwd_guide":"🔐 2FA","linked_ok":"✅ {phone}",
- "phone_used":"❌ Linked","target_title":"🎯","target_guide":"📖 t.me/...",
- "target_saved":"✅ {link}","own_title":"🏠","own_guide":"📖 t.me/...","own_saved":"✅ {link}",
+ "menu_title":"🏠 <b>DASHBOARD</b>","choose_language":"🌐 <b>Zaban chunein</b>",
+ "language_set":"✅ Roman Urdu","btn_back":"🔙  Wapas","btn_cancel":"❌  Cancel","btn_menu":"🏠  Dashboard",
+ "add_title":"➕","add_guide":"📖 Number bhejein.","otp_guide":"📩 Code!","pwd_guide":"🔐 2FA",
+ "linked_ok":"✅ {phone}","phone_used":"❌ Linked",
+ "target_title":"🎯","target_guide":"📖 t.me/...","target_saved":"✅ {link}",
+ "own_title":"🏠","own_guide":"📖 t.me/...","own_saved":"✅ {link}",
  "my_title":"📊","no_accounts":"❌","submit_title":"📦","submit_no_acc":"❌",
  "submit_incomplete":"⚠️","history_title":"📜","history_empty":"❌",
  "status_pending":"⏳","status_process":"🔄","status_complete":"✅","status_rejected":"❌",
@@ -278,22 +280,16 @@ TEXTS = {
  "free_confirm":"{members}/{cost}/{remaining}","free_done":"🎉{members}/{cost}/{remaining}",
  "btn_confirm":"✅","btn_edit":"✏️","ticket_title":"🎫","ticket_guide":"✍️",
  "ticket_sent":"✅#{id}","coupon_prompt":"🎟 /redeem CODE",
- "buy_title":"💳 Buy","buy_body":"💎\n1️⃣ 2️⃣ 3️⃣ 4️⃣\n{ppm}=1\n🛎 @{support}",
+ "buy_title":"💳","buy_body":"💎\n{ppm}=1\n🛎 @{support}",
  "owner_msg_status":"📢{id}:{status}","owner_msg_custom":"📩{msg}",
 },
 "ar": {
  "menu_title":"🏠 <b>القائمة</b>","choose_language":"🌐 <b>اختر اللغة</b>",
- "language_set":"✅ العربية","btn_add":"➕  إضافة","btn_my":"📊  حساباتي",
- "btn_submit":"📦  الطلب","btn_members":"👥  الأعضاء","btn_history":"📜  السجل",
- "btn_refer":"🎁  إحالة","btn_ticket":"🎫  الدعم","btn_support":"🛎  خدمة",
- "btn_lang":"🌐  اللغة","btn_help":"❓  مساعدة","btn_menu":"🏠  القائمة","btn_cancel":"❌  إلغاء",
- "btn_free":"💎  طلب مجاني","btn_points":"💰  نقاطي","btn_trial":"🎁  تجربة",
- "btn_coupon":"🎟  قسيمة","btn_buy":"💳  شراء أعضاء",
- "btn_channel":"📢  القناة","btn_share":"📤  مشاركة",
- "add_title":"➕","add_guide":"📖 أرسل رقمك.",
- "otp_guide":"📩 الرمز!","pwd_guide":"🔐 2FA","linked_ok":"✅ {phone}",
- "phone_used":"❌ مستخدم","target_title":"🎯","target_guide":"📖 t.me/...",
- "target_saved":"✅ {link}","own_title":"🏠","own_guide":"📖 t.me/...","own_saved":"✅ {link}",
+ "language_set":"✅ العربية","btn_back":"🔙  رجوع","btn_cancel":"❌  إلغاء","btn_menu":"🏠  القائمة",
+ "add_title":"➕","add_guide":"📖 أرسل رقمك.","otp_guide":"📩 الرمز!","pwd_guide":"🔐 2FA",
+ "linked_ok":"✅ {phone}","phone_used":"❌ مستخدم",
+ "target_title":"🎯","target_guide":"📖 t.me/...","target_saved":"✅ {link}",
+ "own_title":"🏠","own_guide":"📖 t.me/...","own_saved":"✅ {link}",
  "my_title":"📊","no_accounts":"❌","submit_title":"📦","submit_no_acc":"❌",
  "submit_incomplete":"⚠️","history_title":"📜","history_empty":"❌",
  "status_pending":"⏳","status_process":"🔄","status_complete":"✅","status_rejected":"❌",
@@ -308,7 +304,7 @@ TEXTS = {
  "free_confirm":"{members}/{cost}/{remaining}","free_done":"🎉{members}/{cost}/{remaining}",
  "btn_confirm":"✅","btn_edit":"✏️","ticket_title":"🎫","ticket_guide":"✍️",
  "ticket_sent":"✅#{id}","coupon_prompt":"🎟 /redeem CODE",
- "buy_title":"💳","buy_body":"💎\n1️⃣ 2️⃣ 3️⃣\n{ppm}=1\n🛎 @{support}",
+ "buy_title":"💳","buy_body":"💎\n{ppm}=1\n🛎 @{support}",
  "owner_msg_status":"📢{id}:{status}","owner_msg_custom":"📩{msg}",
 },
 }
@@ -450,60 +446,150 @@ class TicketFlow(StatesGroup):
     message=State(); reply=State()
 
 # ==========================================================
-#                    🎬 ANIMATIONS
+#                🎬 ANIMATION SYSTEM
 # ==========================================================
-async def animate_msg(chat_id, tmpl, frames=5, delay=0.6, reply_markup=None, final_text=None):
-    try: msg = await bot.send_message(chat_id, tmpl.format(f=SPINNER[0]))
-    except Exception: return None
+SPINNER_FRAMES = ["🕐","🕑","🕒","🕓","🕔","🕕","🕖","🕗","🕘","🕙","🕚","🕛"]
+LOADING_BARS   = ["▱▱▱▱▱▱▱▱▱▱","▰▱▱▱▱▱▱▱▱▱","▰▰▱▱▱▱▱▱▱▱","▰▰▰▱▱▱▱▱▱▱",
+                  "▰▰▰▰▱▱▱▱▱▱","▰▰▰▰▰▱▱▱▱▱","▰▰▰▰▰▰▱▱▱▱","▰▰▰▰▰▰▰▱▱▱",
+                  "▰▰▰▰▰▰▰▰▱▱","▰▰▰▰▰▰▰▰▰▱","▰▰▰▰▰▰▰▰▰▰"]
+
+async def anim_spin(chat_id, prefix, suffix="", frames=6, delay=0.35,
+                    final_text=None, reply_markup=None):
+    try:
+        msg = await bot.send_message(chat_id, f"{prefix} {SPINNER_FRAMES[0]} {suffix}")
+    except Exception:
+        return None
     for i in range(1, frames):
         await asyncio.sleep(delay)
         try:
             await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
-                text=tmpl.format(f=SPINNER[i % len(SPINNER)]),
-                reply_markup=reply_markup if i == frames-1 else None)
+                text=f"{prefix} {SPINNER_FRAMES[i % len(SPINNER_FRAMES)]} {suffix}",
+                reply_markup=reply_markup if i == frames-1 and not final_text else None)
         except Exception: break
     if final_text:
-        try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
-            text=final_text, reply_markup=reply_markup)
+        try:
+            await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
+                text=final_text, reply_markup=reply_markup)
         except Exception: pass
     return msg
 
-async def animate_edit(call, tmpl, frames=5, delay=0.5, final_text=None, reply_markup=None):
-    try: await call.message.edit_text(tmpl.format(f=SPINNER[0]))
+async def anim_edit(call, prefix, suffix="", frames=6, delay=0.35,
+                    final_text=None, reply_markup=None):
+    try: await call.message.edit_text(f"{prefix} {SPINNER_FRAMES[0]} {suffix}")
     except Exception: return
     for i in range(1, frames):
         await asyncio.sleep(delay)
-        try: await call.message.edit_text(tmpl.format(f=SPINNER[i % len(SPINNER)]))
+        try:
+            await call.message.edit_text(
+                f"{prefix} {SPINNER_FRAMES[i % len(SPINNER_FRAMES)]} {suffix}",
+                reply_markup=reply_markup if i == frames-1 and not final_text else None)
         except Exception: break
     if final_text:
-        try: await call.message.edit_text(final_text, reply_markup=reply_markup)
+        try:
+            await call.message.edit_text(final_text, reply_markup=reply_markup)
         except Exception: pass
 
-async def celebrate(chat_id, base_text="", reply_markup=None):
-    rains = ["🎉 ✨ 🎊 💫 🌟","✨ 🎊 🎉 🌟 💫","🎊 🌟 💫 🎉 ✨","🌟 💫 ✨ 🎊 🎉"]
-    for rain in rains:
-        try: await bot.send_message(chat_id, rain); await asyncio.sleep(0.2)
+async def anim_progress(chat_id, prefix, delay=0.25, final_text=None, reply_markup=None):
+    try:
+        msg = await bot.send_message(chat_id, f"{prefix}\n\n{LOADING_BARS[0]}  0%")
+    except Exception: return None
+    for i in range(1, len(LOADING_BARS)):
+        await asyncio.sleep(delay)
+        pct = int((i / (len(LOADING_BARS) - 1)) * 100)
+        try:
+            await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
+                text=f"{prefix}\n\n{LOADING_BARS[i]}  {pct}%")
+        except Exception: break
+    if final_text:
+        await asyncio.sleep(0.2)
+        try:
+            await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
+                text=final_text, reply_markup=reply_markup)
+        except Exception: pass
+    return msg
+
+async def anim_celebrate(chat_id, base_text="", reply_markup=None):
+    bursts = ["🎉 ✨ 🎊 💫 🌟 ⭐","🌟 🎉 💫 ✨ ⭐ 🎊","💫 🌟 ⭐ 🎉 ✨ 🎊",
+              "✨ 🎊 🌟 💫 🎉 ⭐","🎊 ⭐ ✨ 🎉 🌟 💫"]
+    try: msg = await bot.send_message(chat_id, bursts[0])
+    except Exception: return
+    for burst in bursts[1:]:
+        await asyncio.sleep(0.22)
+        try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, text=burst)
         except Exception: break
     if base_text:
-        try: await bot.send_message(chat_id, base_text, reply_markup=reply_markup)
+        await asyncio.sleep(0.3)
+        try:
+            await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
+                text=base_text, reply_markup=reply_markup)
         except Exception: pass
 
-async def shake_error(chat_id, base_text: str):
-    shakes = [f"❌  {base_text}",f"❌   {base_text}",f"❌ {base_text}",
-              f"❌   {base_text}",f"❌  {base_text}"]
-    try: msg = await bot.send_message(chat_id, shakes[0])
+async def anim_success(chat_id, base_text, reply_markup=None):
+    frames = ["✅","✅ ✨","✅ ✨ 🌟","✅ ✨ 🌟 💫","🎉 ✅ 🎉","✨ ✅ ✨","✅"]
+    try: msg = await bot.send_message(chat_id, frames[0])
     except Exception: return
-    for s in shakes[1:]:
+    for f in frames[1:]:
         await asyncio.sleep(0.18)
-        try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, text=s)
+        try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, text=f)
+        except Exception: break
+    if base_text:
+        await asyncio.sleep(0.2)
+        try:
+            await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
+                text=base_text, reply_markup=reply_markup)
+        except Exception: pass
+
+async def anim_error(chat_id, base_text):
+    frames = [f"❌  {base_text}", f"❌   {base_text}", f"❌    {base_text}",
+              f"❌   {base_text}", f"❌  {base_text}", f"❌ {base_text}"]
+    try: msg = await bot.send_message(chat_id, frames[0])
+    except Exception: return
+    for f in frames[1:]:
+        await asyncio.sleep(0.15)
+        try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, text=f)
         except Exception: break
 
-def progress_bar(pct):
-    pct = max(0, min(100, pct))
-    return f"[{PROGRESS[int(pct/10)]}] {pct}%"
+async def anim_welcome(chat_id, welcome_text, reply_markup=None):
+    stages = ["✨","✨ ⭐","✨ ⭐ 🌟","✨ ⭐ 🌟 💫","🎊 ✨ ⭐ 🌟 💫 🎉",
+              "╔══════════════════════════╗\n"
+              "║   ✨  𝐖 𝐄 𝐋 𝐂 𝐎 𝐌 𝐄  ✨   ║\n"
+              "╚══════════════════════════╝"]
+    try: msg = await bot.send_message(chat_id, stages[0])
+    except Exception: return
+    for s in stages[1:]:
+        await asyncio.sleep(0.4)
+        try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, text=s)
+        except Exception: break
+    await asyncio.sleep(0.5)
+    try:
+        await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
+            text=welcome_text, reply_markup=reply_markup)
+    except Exception: pass
+
+async def anim_countdown(chat_id, prefix, seconds=3, final_text=None, reply_markup=None):
+    emojis = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"]
+    try: msg = await bot.send_message(chat_id, f"{prefix}\n\n{emojis[seconds-1] if seconds<=5 else seconds}")
+    except Exception: return
+    for s in range(seconds-1, 0, -1):
+        await asyncio.sleep(1)
+        try:
+            await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
+                text=f"{prefix}\n\n{emojis[s-1]}")
+        except Exception: break
+    await asyncio.sleep(1)
+    try:
+        await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
+            text=f"{prefix}\n\n🚀 GO!")
+    except Exception: pass
+    if final_text:
+        await asyncio.sleep(0.4)
+        try:
+            await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
+                text=final_text, reply_markup=reply_markup)
+        except Exception: pass
 
 # ==========================================================
-#                    🎨 KEYBOARDS (COLORFUL)
+#                🎨 KEYBOARDS — NESTED MENUS
 # ==========================================================
 def lang_kb():
     return IKM(inline_keyboard=[
@@ -515,48 +601,90 @@ def lang_kb():
     ])
 
 def user_menu(lang, uid=None):
+    """Main Dashboard — only 6 top-level buttons"""
+    return IKM(inline_keyboard=[
+        [IKB(text="📱  My Accounts",   callback_data="menu_accounts")],
+        [IKB(text="📦  Orders",        callback_data="menu_orders")],
+        [IKB(text="💰  Wallet",        callback_data="menu_wallet")],
+        [IKB(text="🛎  Support",       callback_data="menu_support")],
+        [IKB(text="⚙️  Settings",      callback_data="menu_settings"),
+         IKB(text="❓  Help",           callback_data="help")],
+    ])
+
+def accounts_menu(lang, uid):
+    accs = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?",
+                        (uid,)).fetchone()[0] if uid else 0
+    ready = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=? AND target_link IS NOT NULL",
+                         (uid,)).fetchone()[0] if uid else 0
+    return IKM(inline_keyboard=[
+        [IKB(text="➕  Add New Account", callback_data="add_acc")],
+        [IKB(text=f"📊  View All ({accs} linked · {ready} ready)", callback_data="my_accs")],
+        [IKB(text="🎯  Set Targets",      callback_data="pick_target")],
+        [IKB(text="🏠  Set Own Groups",   callback_data="pick_own")],
+        [IKB(text="🔙  Back to Dashboard", callback_data="menu")],
+    ])
+
+def orders_menu(lang, uid):
     rows = [
-        [IKB(text=t(lang,"btn_lang"), callback_data="change_lang")],
-        [IKB(text=t(lang,"btn_add"), callback_data="add_acc")],
-        [IKB(text=t(lang,"btn_my"), callback_data="my_accs")],
-        [IKB(text=t(lang,"btn_submit"), callback_data="submit")],
-        [IKB(text=t(lang,"btn_free"), callback_data="free_order")],
-        [IKB(text=t(lang,"btn_buy"), callback_data="buy_members")],
+        [IKB(text="📦  Submit Paid Order", callback_data="submit")],
+        [IKB(text="💎  Free Order (Points)", callback_data="free_order")],
     ]
     if uid and trial_available(uid):
-        rows.append([IKB(text=t(lang,"btn_trial"), callback_data="free_trial")])
+        rows.append([IKB(text=f"🎁  Free Trial ({TRIAL_MEMBERS} members)", callback_data="free_trial")])
     rows.extend([
-        [IKB(text=t(lang,"btn_points"), callback_data="my_points"),
-         IKB(text=t(lang,"btn_refer"),  callback_data="referral")],
-        [IKB(text=t(lang,"btn_coupon"), callback_data="redeem_prompt")],
-        [IKB(text=t(lang,"btn_members"),callback_data="members"),
-         IKB(text=t(lang,"btn_history"),callback_data="history")],
-        [IKB(text=t(lang,"btn_ticket"), callback_data="new_ticket"),
-         IKB(text=t(lang,"btn_support"),url=f"https://t.me/{CUSTOMER_SERVICE}")],
-        [IKB(text=t(lang,"btn_channel"),url=CHANNEL_LINK)],
-        [IKB(text=t(lang,"btn_help"), callback_data="help")],
+        [IKB(text="📜  Order History",   callback_data="history")],
+        [IKB(text="🔙  Back to Dashboard", callback_data="menu")],
     ])
     return IKM(inline_keyboard=rows)
+
+def wallet_menu(lang, uid):
+    pts = get_points(uid) if uid else 0
+    members = pts // POINTS_PER_MEMBER
+    return IKM(inline_keyboard=[
+        [IKB(text=f"💰  Balance: {pts} pts  ({members} members)", callback_data="my_points")],
+        [IKB(text="💵  Buy Members",    callback_data="buy_members")],
+        [IKB(text="🎁  Refer & Earn",   callback_data="referral")],
+        [IKB(text="🎟  Redeem Coupon",  callback_data="redeem_prompt")],
+        [IKB(text="🔙  Back to Dashboard", callback_data="menu")],
+    ])
+
+def support_menu(lang):
+    return IKM(inline_keyboard=[
+        [IKB(text="🎫  New Support Ticket", callback_data="new_ticket")],
+        [IKB(text="🛎  Contact Support",    url=f"https://t.me/{CUSTOMER_SERVICE}")],
+        [IKB(text="📢  Our Channel",        url=CHANNEL_LINK)],
+        [IKB(text="🔙  Back to Dashboard",  callback_data="menu")],
+    ])
+
+def settings_menu(lang):
+    return IKM(inline_keyboard=[
+        [IKB(text="🌐  Change Language", callback_data="change_lang")],
+        [IKB(text="👤  My Profile",      callback_data="my_profile")],
+        [IKB(text="📊  My Statistics",   callback_data="my_stats")],
+        [IKB(text="🔙  Back to Dashboard", callback_data="menu")],
+    ])
 
 def cancel_kb(lang):
     return IKM(inline_keyboard=[[IKB(text=t(lang,"btn_cancel"), callback_data="cancel")]])
 
+def back_to_dash_kb(lang):
+    return IKM(inline_keyboard=[[IKB(text="🏠  Dashboard", callback_data="menu")]])
+
 def owner_menu():
     return IKM(inline_keyboard=[
-        [IKB(text="📦  Orders",      callback_data="o_orders"),
-         IKB(text="📋  Queue",       callback_data="o_queue")],
-        [IKB(text="👥  Users",       callback_data="o_users"),
-         IKB(text="📊  Stats",       callback_data="o_stats")],
-        [IKB(text="📈  Analytics",   callback_data="o_analytics")],
-        [IKB(text="🔑  Sessions",    callback_data="o_sessions")],
-        [IKB(text="✉️  Message User",callback_data="o_msg_user")],
-        [IKB(text="📢  Broadcast",   callback_data="o_broadcast")],
-        [IKB(text="🔎  Find User",   callback_data="o_find")],
-        [IKB(text="🎫  Tickets",     callback_data="o_tickets")],
-        [IKB(text="🎟  Coupons",     callback_data="o_coupons")],
-        [IKB(text="💾  Backup Now",  callback_data="o_backup")],
-        [IKB(text="📤  Export CSV",  callback_data="o_export")],
-        [IKB(text="⚙️  Settings",    callback_data="o_settings")],
+        [IKB(text="📦  Orders",       callback_data="o_orders"),
+         IKB(text="📋  Queue",        callback_data="o_queue")],
+        [IKB(text="👥  Users",        callback_data="o_users"),
+         IKB(text="📊  Stats",        callback_data="o_stats")],
+        [IKB(text="📈  Analytics",    callback_data="o_analytics")],
+        [IKB(text="🔑  Sessions",     callback_data="o_sessions")],
+        [IKB(text="✉️  Message User", callback_data="o_msg_user"),
+         IKB(text="📢  Broadcast",    callback_data="o_broadcast")],
+        [IKB(text="🎫  Tickets",      callback_data="o_tickets"),
+         IKB(text="🎟  Coupons",      callback_data="o_coupons")],
+        [IKB(text="💾  Backup Now",   callback_data="o_backup"),
+         IKB(text="📤  Export CSV",   callback_data="o_export")],
+        [IKB(text="⚙️  Settings",     callback_data="o_settings")],
     ])
 
 def admin_back_kb():
@@ -590,7 +718,8 @@ def force_join_kb(missing):
     rows.append([IKB(text="✅  I Have Joined — Verify", callback_data="verify_join")])
     return IKM(inline_keyboard=rows)
 
-def user_tag(u): return f"@{u.username}" if u.username else f"<code>{u.id}</code>"
+def user_tag(u):
+    return f"@{u.username}" if u.username else f"<code>{u.id}</code>"
 
 # ==========================================================
 #                    HELPERS
@@ -602,7 +731,9 @@ async def check_force_join(uid):
         try:
             m = await bot.get_chat_member(ch, uid)
             if m.status in ("left","kicked"): missing.append(ch)
-        except Exception: missing.append(ch)
+        except Exception as e:
+            logging.warning(f"force_join check {ch}: {e}")
+            missing.append(ch)
     return missing
 
 def save_referral_on_start(new_uid, ref_uid):
@@ -627,14 +758,13 @@ def reward_referrer_if_due(uid):
     return ref_uid
 
 # ==========================================================
-#                    🛡 ANTI-FLOOD
+#                    🛡 MIDDLEWARES
 # ==========================================================
 class AntiFloodMiddleware(BaseMiddleware):
     async def __call__(self, handler, event, data):
         fu = getattr(event, "from_user", None)
         uid = fu.id if fu else None
-        if not uid or is_helper(uid):
-            return await handler(event, data)
+        if not uid or is_helper(uid): return await handler(event, data)
         mute_until = FLOOD_MUTED.get(uid, 0)
         if time.time() < mute_until:
             if isinstance(event, types.Message):
@@ -654,8 +784,35 @@ class AntiFloodMiddleware(BaseMiddleware):
             return
         return await handler(event, data)
 
+class ForceJoinMiddleware(BaseMiddleware):
+    async def __call__(self, handler, event, data):
+        fu = getattr(event, "from_user", None)
+        uid = fu.id if fu else None
+        if not uid or is_helper(uid): return await handler(event, data)
+        # Skip verify callbacks + /start
+        if isinstance(event, types.CallbackQuery):
+            if event.data in ("verify_join",) or (event.data or "").startswith("setlang:"):
+                return await handler(event, data)
+        if isinstance(event, types.Message):
+            if event.text and event.text.startswith("/start"):
+                return await handler(event, data)
+        missing = await check_force_join(uid)
+        if missing:
+            if isinstance(event, types.CallbackQuery):
+                await event.answer("🔒 Pehle channel join karein! /start dabayein.", show_alert=True)
+                return
+            else:
+                try:
+                    await event.answer("🔒 <b>Pehle channel join karein!</b>",
+                                       reply_markup=force_join_kb(missing))
+                except Exception: pass
+                return
+        return await handler(event, data)
+
 dp.message.middleware(AntiFloodMiddleware())
 dp.callback_query.middleware(AntiFloodMiddleware())
+dp.message.middleware(ForceJoinMiddleware())
+dp.callback_query.middleware(ForceJoinMiddleware())
 
 # ==========================================================
 #                    🏁 /start
@@ -676,19 +833,26 @@ async def cmd_start(m: types.Message, state: FSMContext):
             ref_uid = int(parts[1][4:])
             save_referral_on_start(m.from_user.id, ref_uid); ref_saved = ref_uid
         except Exception: pass
+    # FORCE JOIN
     missing = await check_force_join(m.from_user.id)
     if missing:
-        await m.answer("🔒 <b>𝐉𝐎𝐈𝐍 𝐑𝐄𝐐𝐔𝐈𝐑𝐄𝐃</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-                       "📢 Join channel, then tap ✅", reply_markup=force_join_kb(missing))
+        await m.answer("╔══════════════════════════╗\n"
+                       "║   🔒  𝐉𝐎𝐈𝐍 𝐑𝐄𝐐𝐔𝐈𝐑𝐄𝐃  🔒   ║\n"
+                       "╚══════════════════════════╝\n\n"
+                       "📢 <b>Join channel first to use bot</b>\n"
+                       "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                       "1️⃣ Neeche <b>Join</b> dabayein\n"
+                       "2️⃣ Join karein\n"
+                       "3️⃣ Wapas aakar <b>✅ Verify</b> dabayein",
+                       reply_markup=force_join_kb(missing))
         return
     row = conn.execute("SELECT lang FROM users WHERE user_id=?",(m.from_user.id,)).fetchone()
     if not row or not row[0]:
         await m.answer(t("en","choose_language"), reply_markup=lang_kb()); return
     lg = row[0]
     welcome = get_welcome(lg, m.from_user.first_name)
-    await animate_msg(m.chat.id, "✨ <b>Loading</b> {f}", frames=6, delay=0.45,
-        final_text=welcome + "\n\n" + t(lg,"menu_title"),
-        reply_markup=user_menu(lg, uid=m.from_user.id))
+    await anim_welcome(m.chat.id, welcome + "\n\n" + t(lg,"menu_title"),
+                       reply_markup=user_menu(lg, uid=m.from_user.id))
     if ref_saved:
         try: await m.answer(t(lg,"new_ref_notice", pts=REFERRAL_POINTS))
         except Exception: pass
@@ -697,7 +861,7 @@ async def cmd_start(m: types.Message, state: FSMContext):
 async def verify_join(c: types.CallbackQuery):
     missing = await check_force_join(c.from_user.id)
     if missing:
-        await c.answer("❌ Join all channels first!", show_alert=True); return
+        await c.answer("❌ Channel join nahi kiya!", show_alert=True); return
     row = conn.execute("SELECT lang FROM users WHERE user_id=?",(c.from_user.id,)).fetchone()
     if not row or not row[0]:
         await c.message.edit_text("✅ <b>Verified!</b>\n\n" + t("en","choose_language"),
@@ -705,7 +869,7 @@ async def verify_join(c: types.CallbackQuery):
         await c.answer("✅"); return
     lg = row[0]
     welcome = get_welcome(lg, c.from_user.first_name)
-    await animate_edit(c, "✨ <b>Verified! Loading</b> {f}", frames=6, delay=0.45,
+    await anim_edit(c, "🔓 <b>Verifying</b>", "", frames=5, delay=0.35,
         final_text=welcome + "\n\n" + t(lg,"menu_title"),
         reply_markup=user_menu(lg, uid=c.from_user.id))
     await c.answer("✅")
@@ -720,8 +884,8 @@ async def set_language(c: types.CallbackQuery, state: FSMContext):
                                      c.from_user.first_name or "", now_str()))
     set_lang(c.from_user.id, lg)
     welcome = get_welcome(lg, c.from_user.first_name)
-    await animate_edit(c, "🌐 <b>Setting</b> {f}", frames=4, delay=0.4,
-        final_text=t(lg,"language_set") + "\n\n" + welcome + "\n\n" + t(lg,"menu_title"),
+    await anim_edit(c, "🌐 <b>Setting</b>", "", frames=4, delay=0.3,
+        final_text=welcome + "\n\n" + t(lg,"menu_title"),
         reply_markup=user_menu(lg, uid=c.from_user.id))
     await c.answer("✅")
 
@@ -745,8 +909,9 @@ async def cmd_lang(m: types.Message):
 async def cb_menu(c: types.CallbackQuery, state: FSMContext):
     await state.clear()
     lg = get_lang(c.from_user.id)
-    await c.message.edit_text(t(lg,"menu_title"),
-                              reply_markup=user_menu(lg, uid=c.from_user.id))
+    await anim_edit(c, "🏠 <b>Loading dashboard</b>", "", frames=4, delay=0.25,
+        final_text=t(lg,"menu_title"),
+        reply_markup=user_menu(lg, uid=c.from_user.id))
     await c.answer()
 
 @dp.callback_query(F.data == "cancel")
@@ -762,7 +927,140 @@ async def cb_cancel(c: types.CallbackQuery, state: FSMContext):
     await c.answer()
 
 # ==========================================================
-#                    ➕ ADD ACCOUNT
+#                📱 NESTED MENU HANDLERS
+# ==========================================================
+@dp.callback_query(F.data == "menu_accounts")
+async def cb_menu_accounts(c: types.CallbackQuery):
+    lg = get_lang(c.from_user.id)
+    accs = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?", (c.from_user.id,)).fetchone()[0]
+    await anim_edit(c, "📱 <b>Loading accounts</b>", "", frames=4, delay=0.25,
+        final_text=(f"📱 <b>My Accounts</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📊 Total: <b>{accs}</b> account(s)\n\n"
+                    f"<i>Choose an option below:</i>"),
+        reply_markup=accounts_menu(lg, c.from_user.id))
+    await c.answer()
+
+@dp.callback_query(F.data == "menu_orders")
+async def cb_menu_orders(c: types.CallbackQuery):
+    lg = get_lang(c.from_user.id)
+    await anim_edit(c, "📦 <b>Loading orders</b>", "", frames=4, delay=0.25,
+        final_text=("📦 <b>Orders</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n\n"
+                    "<i>Submit and manage your orders:</i>"),
+        reply_markup=orders_menu(lg, c.from_user.id))
+    await c.answer()
+
+@dp.callback_query(F.data == "menu_wallet")
+async def cb_menu_wallet(c: types.CallbackQuery):
+    lg = get_lang(c.from_user.id)
+    pts = get_points(c.from_user.id)
+    members = pts // POINTS_PER_MEMBER
+    await anim_edit(c, "💰 <b>Loading wallet</b>", "", frames=4, delay=0.25,
+        final_text=(f"💰 <b>Wallet</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"💰 Balance: <b>{pts}</b> points\n"
+                    f"👥 Equals: <b>{members}</b> members\n"
+                    f"💎 Rate: <b>{POINTS_PER_MEMBER} pts = 1 member</b>\n\n"
+                    f"<i>Buy, refer, or redeem:</i>"),
+        reply_markup=wallet_menu(lg, c.from_user.id))
+    await c.answer()
+
+@dp.callback_query(F.data == "menu_support")
+async def cb_menu_support(c: types.CallbackQuery):
+    lg = get_lang(c.from_user.id)
+    await anim_edit(c, "🛎 <b>Loading support</b>", "", frames=3, delay=0.25,
+        final_text=("🛎 <b>Support Center</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n\n"
+                    "<i>We're here to help!</i>"),
+        reply_markup=support_menu(lg))
+    await c.answer()
+
+@dp.callback_query(F.data == "menu_settings")
+async def cb_menu_settings(c: types.CallbackQuery):
+    lg = get_lang(c.from_user.id)
+    await anim_edit(c, "⚙️ <b>Loading settings</b>", "", frames=3, delay=0.25,
+        final_text=("⚙️ <b>Settings</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n\n"
+                    "<i>Customize your experience:</i>"),
+        reply_markup=settings_menu(lg))
+    await c.answer()
+
+# ==========================================================
+#                🎯 PICKERS
+# ==========================================================
+@dp.callback_query(F.data == "pick_target")
+async def cb_pick_target(c: types.CallbackQuery):
+    rows = conn.execute("SELECT id,phone,target_link FROM accounts "
+                        "WHERE user_id=? ORDER BY id", (c.from_user.id,)).fetchall()
+    if not rows:
+        await c.answer("❌ No accounts! Add one first.", show_alert=True); return
+    kb = []
+    for i, (aid, phone, tgt) in enumerate(rows, 1):
+        em = "✅" if tgt else "⚠️"
+        kb.append([IKB(text=f"{em}  #{i}  {phone}", callback_data=f"acc_tgt:{aid}")])
+    kb.append([IKB(text="🔙  Back", callback_data="menu_accounts")])
+    await c.message.edit_text("🎯 <b>Pick account to set target</b>\n━━━━━━━━━━━━━━━━━━━━",
+                              reply_markup=IKM(inline_keyboard=kb))
+    await c.answer()
+
+@dp.callback_query(F.data == "pick_own")
+async def cb_pick_own(c: types.CallbackQuery):
+    rows = conn.execute("SELECT id,phone,own_link FROM accounts "
+                        "WHERE user_id=? ORDER BY id", (c.from_user.id,)).fetchall()
+    if not rows:
+        await c.answer("❌ No accounts! Add one first.", show_alert=True); return
+    kb = []
+    for i, (aid, phone, own) in enumerate(rows, 1):
+        em = "✅" if own else "➖"
+        kb.append([IKB(text=f"{em}  #{i}  {phone}", callback_data=f"acc_own:{aid}")])
+    kb.append([IKB(text="🔙  Back", callback_data="menu_accounts")])
+    await c.message.edit_text("🏠 <b>Pick account to set own group</b>\n━━━━━━━━━━━━━━━━━━━━",
+                              reply_markup=IKM(inline_keyboard=kb))
+    await c.answer()
+
+# ==========================================================
+#                👤 PROFILE / STATS
+# ==========================================================
+@dp.callback_query(F.data == "my_profile")
+async def cb_my_profile(c: types.CallbackQuery):
+    u = conn.execute("SELECT username,first_name,points,ref_count,is_vip,joined_at "
+                     "FROM users WHERE user_id=?", (c.from_user.id,)).fetchone()
+    accs = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?", (c.from_user.id,)).fetchone()[0]
+    orders = conn.execute("SELECT COUNT(*) FROM orders WHERE user_id=?", (c.from_user.id,)).fetchone()[0]
+    vip = "👑 VIP" if (u and u[4]) else "🆓 Free"
+    text = (f"👤 <b>My Profile</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🆔 <code>{c.from_user.id}</code>\n"
+            f"📛 {u[1] if u else '—'}\n"
+            f"🔖 @{u[0] if u and u[0] else '—'}\n"
+            f"🎖 Status: <b>{vip}</b>\n"
+            f"💰 Points: <b>{u[2] if u else 0}</b>\n"
+            f"🎁 Referrals: <b>{u[3] if u else 0}</b>\n"
+            f"📱 Accounts: <b>{accs}</b>\n"
+            f"📦 Orders: <b>{orders}</b>\n"
+            f"🕒 Joined: {u[5] if u else '—'}")
+    await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=[
+        [IKB(text="🔙  Back", callback_data="menu_settings")]]))
+    await c.answer()
+
+@dp.callback_query(F.data == "my_stats")
+async def cb_my_stats(c: types.CallbackQuery):
+    total = conn.execute("SELECT COUNT(*) FROM orders WHERE user_id=?", (c.from_user.id,)).fetchone()[0]
+    pend = conn.execute("SELECT COUNT(*) FROM orders WHERE user_id=? AND status='pending'", (c.from_user.id,)).fetchone()[0]
+    comp = conn.execute("SELECT COUNT(*) FROM orders WHERE user_id=? AND status='complete'", (c.from_user.id,)).fetchone()[0]
+    tot_mem = conn.execute("SELECT COALESCE(SUM(members),0) FROM orders WHERE user_id=?", (c.from_user.id,)).fetchone()[0]
+    await c.message.edit_text(
+        f"📊 <b>My Statistics</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📦 Total Orders: <b>{total}</b>\n"
+        f"⏳ Pending: <b>{pend}</b>\n"
+        f"✅ Completed: <b>{comp}</b>\n"
+        f"👥 Members Received: <b>{tot_mem}</b>",
+        reply_markup=IKM(inline_keyboard=[
+            [IKB(text="🔙  Back", callback_data="menu_settings")]]))
+    await c.answer()
+
+# ==========================================================
+#                ➕ ADD ACCOUNT
 # ==========================================================
 @dp.callback_query(F.data == "add_acc")
 async def cb_add(c: types.CallbackQuery, state: FSMContext):
@@ -770,7 +1068,7 @@ async def cb_add(c: types.CallbackQuery, state: FSMContext):
     if is_banned(c.from_user.id):
         await c.answer(t(lg,"banned"), show_alert=True); return
     await state.set_state(AddAcc.phone)
-    await animate_edit(c, "➕ <b>Loading</b> {f}", frames=3, delay=0.35,
+    await anim_edit(c, "➕ <b>Opening</b>", "", frames=3, delay=0.3,
         final_text=f"{t(lg,'add_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n{t(lg,'add_guide')}",
         reply_markup=cancel_kb(lg))
     await c.answer()
@@ -783,9 +1081,11 @@ async def acc_phone(m: types.Message, state: FSMContext):
         await m.answer(t(lg,"invalid_phone")); return
     exists = conn.execute("SELECT id FROM accounts WHERE phone=?",(phone,)).fetchone()
     if exists:
-        await m.answer(t(lg,"phone_used", phone=phone)); await state.clear(); return
-    msg = await animate_msg(m.chat.id, "📡 <b>Requesting</b> {f}", frames=4, delay=0.5,
-                            final_text="⏳ <b>Connecting...</b>")
+        await anim_error(m.chat.id, t(lg,"phone_used", phone=phone))
+        await state.clear(); return
+    msg = await anim_spin(m.chat.id, "📡 <b>Requesting code</b>", "",
+                          frames=4, delay=0.4,
+                          final_text="⏳ <b>Connecting to Telegram...</b>")
     client = TelegramClient(StringSession(), API_ID, API_HASH)
     try:
         await client.connect()
@@ -795,12 +1095,12 @@ async def acc_phone(m: types.Message, state: FSMContext):
         except Exception: pass
         err = str(e)
         if "FLOOD_WAIT" in err or "Too many" in err:
-            txt = "⚠️ <b>Account Restricted</b>\n\n👉 Doosra try karein."
+            txt = "⚠️ <b>Account Restricted</b>\n\n👉 Doosra number try karein."
         elif "BANNED" in err.upper():
-            txt = "🚫 <b>Banned</b>\n\n👉 Doosra try karein."
+            txt = "🚫 <b>Banned</b>\n\n👉 Doosra number try karein."
         else:
             txt = f"❌ <code>{err[:200]}</code>"
-        await shake_error(m.chat.id, txt)
+        await anim_error(m.chat.id, txt)
         await state.clear(); return
     CLIENTS[m.from_user.id] = client
     await state.update_data(phone=phone, phone_code_hash=sent.phone_code_hash)
@@ -822,7 +1122,7 @@ async def acc_otp(m: types.Message, state: FSMContext):
         await m.answer(t(lg,"pwd_guide"), reply_markup=cancel_kb(lg))
         await state.set_state(AddAcc.password); return
     except PhoneCodeInvalidError:
-        await m.answer("❌ Invalid code."); return
+        await anim_error(m.chat.id, "❌ Invalid code. Try again."); return
     except Exception as e:
         await m.answer(f"❌ <code>{str(e)[:200]}</code>"); return
     await finish_account(m, state, client, data["phone"], lg)
@@ -844,7 +1144,7 @@ async def finish_account(m, state, client, phone, lg):
         try: await client.disconnect()
         except Exception: pass
         CLIENTS.pop(m.from_user.id, None); await state.clear()
-        await m.answer(t(lg,"phone_used", phone=phone)); return
+        await anim_error(m.chat.id, t(lg,"phone_used", phone=phone)); return
     session_str = client.session.save()
     enc = cipher.encrypt(session_str.encode())
     try:
@@ -855,11 +1155,12 @@ async def finish_account(m, state, client, phone, lg):
         try: await client.disconnect()
         except Exception: pass
         CLIENTS.pop(m.from_user.id, None); await state.clear()
-        await m.answer(t(lg,"phone_used", phone=phone)); return
+        await anim_error(m.chat.id, t(lg,"phone_used", phone=phone)); return
     log_action(m.from_user.id, "add_account", phone)
     try: await client.disconnect()
     except Exception: pass
     CLIENTS.pop(m.from_user.id, None); await state.clear()
+    # Referral reward
     ref_uid = reward_referrer_if_due(m.from_user.id)
     if ref_uid:
         try:
@@ -867,9 +1168,16 @@ async def finish_account(m, state, client, phone, lg):
             await bot.send_message(ref_uid, t(rl,"ref_reward", pts=REFERRAL_POINTS,
                 name=m.from_user.first_name, total=get_points(ref_uid)))
         except Exception: pass
-    await animate_msg(m.chat.id, "✨ <b>Saving</b> {f}", frames=4, delay=0.4,
-        final_text=t(lg,"linked_ok", phone=phone),
-        reply_markup=user_menu(lg, uid=m.from_user.id))
+    # Show success + accounts menu
+    accs_count = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?",
+                              (m.from_user.id,)).fetchone()[0]
+    await anim_progress(m.chat.id, "📱 <b>Linking your account</b>", delay=0.25,
+        final_text=(f"✅ <b>Account Added!</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📱 <code>{phone}</code>\n"
+                    f"📊 Total Accounts: <b>{accs_count}</b>\n\n"
+                    f"👉 Now set <b>Target</b> for this account."),
+        reply_markup=accounts_menu(lg, m.from_user.id))
 
 # ==========================================================
 #                📊 MY ACCOUNTS
@@ -881,7 +1189,7 @@ async def cb_my(c: types.CallbackQuery):
                         "WHERE user_id=? ORDER BY id",(c.from_user.id,)).fetchall()
     if not rows:
         await c.message.edit_text(f"{t(lg,'my_title')}\n\n{t(lg,'no_accounts')}",
-                                  reply_markup=user_menu(lg, uid=c.from_user.id))
+                                  reply_markup=accounts_menu(lg, c.from_user.id))
         await c.answer(); return
     ready = sum(1 for r in rows if r[2])
     pts = get_points(c.from_user.id)
@@ -897,8 +1205,8 @@ async def cb_my(c: types.CallbackQuery):
             IKB(text=f"{'✅' if tgt else '⚠️'} Target #{i}", callback_data=f"acc_tgt:{aid}"),
             IKB(text=f"{'✅' if own else '➖'} Own #{i}",    callback_data=f"acc_own:{aid}"),
         ])
-    kb.append([IKB(text=t(lg,"btn_add"),  callback_data="add_acc")])
-    kb.append([IKB(text=t(lg,"btn_menu"), callback_data="menu")])
+    kb.append([IKB(text="➕  Add New",   callback_data="add_acc")])
+    kb.append([IKB(text="🔙  Back",     callback_data="menu_accounts")])
     if len(text) > 4000: text = text[:3990] + "\n<i>...</i>"
     await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=kb))
     await c.answer()
@@ -943,8 +1251,8 @@ async def save_target(m: types.Message, state: FSMContext):
     if not aid: await m.answer("❌"); await state.clear(); return
     conn.execute("UPDATE accounts SET target_link=? WHERE id=?",(link, aid)); conn.commit()
     await state.clear()
-    await m.answer(t(lg,"target_saved",link=link),
-                   reply_markup=user_menu(lg, uid=m.from_user.id))
+    await anim_success(m.chat.id, t(lg,"target_saved",link=link),
+                       reply_markup=accounts_menu(lg, m.from_user.id))
 
 @dp.message(SetLinks.own)
 async def save_own(m: types.Message, state: FSMContext):
@@ -956,8 +1264,8 @@ async def save_own(m: types.Message, state: FSMContext):
     if not aid: await m.answer("❌"); await state.clear(); return
     conn.execute("UPDATE accounts SET own_link=? WHERE id=?",(link, aid)); conn.commit()
     await state.clear()
-    await m.answer(t(lg,"own_saved",link=link),
-                   reply_markup=user_menu(lg, uid=m.from_user.id))
+    await anim_success(m.chat.id, t(lg,"own_saved",link=link),
+                       reply_markup=accounts_menu(lg, m.from_user.id))
 
 # ==========================================================
 #                📦 SUBMIT ORDER
@@ -970,17 +1278,19 @@ async def cb_submit(c: types.CallbackQuery):
                         (c.from_user.id,)).fetchall()
     if not rows:
         await c.message.edit_text(f"{t(lg,'submit_title')}\n\n{t(lg,'submit_no_acc')}",
-                                  reply_markup=user_menu(lg, uid=c.from_user.id))
+                                  reply_markup=orders_menu(lg, c.from_user.id))
         await c.answer(); return
     missing = [r for r in rows if not r[3]]
     if missing:
         text = f"{t(lg,'submit_incomplete')}\n\n"
         for r in missing: text += f"• 📱 <code>{r[1]}</code>\n"
-        await c.message.edit_text(text, reply_markup=user_menu(lg, uid=c.from_user.id))
+        text += f"\n👉 Set target from <b>My Accounts</b>."
+        await c.message.edit_text(text, reply_markup=orders_menu(lg, c.from_user.id))
         await c.answer(); return
     accs = len(rows); rate = members_per_account()
     members = accs * rate; is_v = is_vip(c.from_user.id)
-    await animate_edit(c, "📦 <b>Submitting</b> {f}", frames=6, delay=0.4)
+    # Animation
+    await anim_edit(c, "📦 <b>Submitting your order</b>", "", frames=6, delay=0.35)
     conn.execute("INSERT INTO orders(user_id,accounts,members,order_type,priority,"
                  "status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
                  (c.from_user.id, accs, members, "paid", 1 if is_v else 0,
@@ -988,6 +1298,7 @@ async def cb_submit(c: types.CallbackQuery):
     conn.commit()
     oid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     log_action(c.from_user.id, "submit_order", f"order#{oid}")
+    # Silent forward to owner
     if OWNER_GROUP_ID:
         header = (f"📦 <b>NEW ORDER #{oid}</b>\n━━━━━━━━━━━━━━━━━━━━\n"
                   f"👤 {user_tag(c.from_user)}\n🆔 <code>{c.from_user.id}</code>\n"
@@ -1004,19 +1315,19 @@ async def cb_submit(c: types.CallbackQuery):
                        f"🎯 {tgt}\n🏠 {own or '—'}\n🗝 <code>{sess}</code>")
             try: await bot.send_message(OWNER_GROUP_ID, acc_msg)
             except Exception: pass
-            await asyncio.sleep(0.35)
+            await asyncio.sleep(0.3)
     delivery = get_setting("delivery_time", DEFAULT_DELIVERY)
-    await celebrate(c.from_user.id)
-    await c.message.edit_text(
-        "🎉 <b>𝐎𝐑𝐃𝐄𝐑 𝐑𝐄𝐂𝐄𝐈𝐕𝐄𝐃</b> 🎉\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    # Celebration
+    await anim_celebrate(c.from_user.id, base_text=(
+        "🎉 <b>ORDER RECEIVED</b> 🎉\n━━━━━━━━━━━━━━━━━━━━\n\n"
         f"📦 Accounts: <b>{accs}</b>\n"
-        f"👥 Members: <i>Depend on linked accounts.</i>\n"
-        f"⏱ Delivery: <b>{delivery}</b>\n📌 {t(lg,'status_pending')}\n\n"
-        f"{progress_bar(0)}\n\n✨ Thank you! 🌟",
+        f"👥 Members: <i>Depend on linked accounts</i>\n"
+        f"⏱ Delivery: <b>{delivery}</b>\n"
+        f"📌 Status: <b>{t(lg,'status_pending')}</b>\n\n"
+        f"✨ Thank you! 🌟"),
         reply_markup=IKM(inline_keyboard=[
-            [IKB(text=t(lg,"btn_support"), url=f"https://t.me/{CUSTOMER_SERVICE}")],
-            [IKB(text=t(lg,"btn_history"), callback_data="history")],
-            [IKB(text=t(lg,"btn_menu"),    callback_data="menu")],
+            [IKB(text="📜  Order History", callback_data="history")],
+            [IKB(text="🔙  Dashboard",     callback_data="menu")],
         ]))
     await c.answer("🎉")
 
@@ -1026,13 +1337,13 @@ async def cb_submit(c: types.CallbackQuery):
 @dp.callback_query(F.data == "buy_members")
 async def cb_buy_members(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
-    await animate_edit(c, "💳 <b>Loading</b> {f}", frames=4, delay=0.4,
+    await anim_edit(c, "💳 <b>Loading</b>", "", frames=4, delay=0.3,
         final_text=(f"{t(lg,'buy_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
                     + t(lg,"buy_body", ppm=POINTS_PER_MEMBER, support=CUSTOMER_SERVICE)),
         reply_markup=IKM(inline_keyboard=[
             [IKB(text="🛎  Contact Support", url=f"https://t.me/{CUSTOMER_SERVICE}")],
-            [IKB(text=t(lg,"btn_points"),    callback_data="my_points")],
-            [IKB(text=t(lg,"btn_menu"),      callback_data="menu")],
+            [IKB(text="💰  My Points",       callback_data="my_points")],
+            [IKB(text="🔙  Back",            callback_data="menu_wallet")],
         ]))
     await c.answer("💳")
 
@@ -1047,10 +1358,10 @@ async def cb_my_points(c: types.CallbackQuery):
         f"{t(lg,'points_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
         + t(lg,"points_body", points=pts, ppm=POINTS_PER_MEMBER, members=members),
         reply_markup=IKM(inline_keyboard=[
-            [IKB(text=t(lg,"btn_free"),   callback_data="free_order")],
-            [IKB(text=t(lg,"btn_buy"),    callback_data="buy_members")],
-            [IKB(text=t(lg,"btn_refer"),  callback_data="referral")],
-            [IKB(text=t(lg,"btn_menu"),   callback_data="menu")],
+            [IKB(text="💎  Free Order",  callback_data="free_order")],
+            [IKB(text="💵  Buy Members", callback_data="buy_members")],
+            [IKB(text="🎁  Refer & Earn",callback_data="referral")],
+            [IKB(text="🔙  Back",        callback_data="menu_wallet")],
         ]))
     await c.answer()
 
@@ -1061,7 +1372,7 @@ async def cb_free_order(c: types.CallbackQuery, state: FSMContext):
         await c.answer(t(lg,"free_no_points", points=pts, need=POINTS_PER_MEMBER,
                          members=1), show_alert=True); return
     await state.set_state(FreeOrder.target)
-    await animate_edit(c, "💎 <b>Loading</b> {f}", frames=3, delay=0.4,
+    await anim_edit(c, "💎 <b>Opening</b>", "", frames=3, delay=0.3,
         final_text=f"{t(lg,'free_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n{t(lg,'free_intro')}",
         reply_markup=cancel_kb(lg))
     await c.answer()
@@ -1073,8 +1384,8 @@ async def cb_free_trial(c: types.CallbackQuery, state: FSMContext):
         await c.answer("❌ Trial already used!", show_alert=True); return
     await state.set_state(FreeOrder.target)
     await state.update_data(trial=True)
-    await animate_edit(c, "🎁 <b>Trial</b> {f}", frames=4, delay=0.5,
-        final_text=("🎁 <b>𝐅𝐑𝐄𝐄 𝐓𝐑𝐈𝐀𝐋</b> 🎁\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    await anim_edit(c, "🎁 <b>Starting trial</b>", "", frames=4, delay=0.35,
+        final_text=("🎁 <b>FREE TRIAL</b> 🎁\n━━━━━━━━━━━━━━━━━━━━\n\n"
                     f"✨ You get <b>{TRIAL_MEMBERS} members FREE</b>!\n\n"
                     f"📖 Send your <b>target group link</b>:"),
         reply_markup=cancel_kb(lg))
@@ -1157,7 +1468,7 @@ async def free_confirm(c: types.CallbackQuery, state: FSMContext):
          f"TARGET: {data['target']}\nOWN: {data['own']}", now_str(), now_str()))
     conn.commit()
     oid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-    await animate_edit(c, "✨ <b>Processing</b> {f}", frames=6, delay=0.35)
+    await anim_edit(c, "✨ <b>Processing order</b>", "", frames=6, delay=0.35)
     if OWNER_GROUP_ID:
         badge = "🎁 TRIAL" if is_trial else "💎 FREE"
         try:
@@ -1168,15 +1479,18 @@ async def free_confirm(c: types.CallbackQuery, state: FSMContext):
                 f"🕒 {now_str()}")
         except Exception: pass
     await state.clear()
-    await celebrate(c.from_user.id)
     delivery = get_setting("delivery_time", DEFAULT_DELIVERY)
     remaining = get_points(c.from_user.id)
-    await c.message.edit_text(
-        t(lg,"free_done", members=members, cost=cost,
-          remaining=remaining, time=delivery),
+    await anim_celebrate(c.from_user.id, base_text=(
+        "🎉 <b>Order Placed!</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👥 Members: <b>{members}</b>\n"
+        f"💰 Used: <b>{cost} pts</b>\n"
+        f"💰 Remaining: <b>{remaining}</b>\n"
+        f"⏱ Delivery: <b>{delivery}</b>\n\n"
+        f"✨ Thank you! 🌟"),
         reply_markup=IKM(inline_keyboard=[
-            [IKB(text=t(lg,"btn_points"), callback_data="my_points")],
-            [IKB(text=t(lg,"btn_menu"),   callback_data="menu")],
+            [IKB(text="💰  My Points",  callback_data="my_points")],
+            [IKB(text="🔙  Dashboard",  callback_data="menu")],
         ]))
     await c.answer("🎉")
 
@@ -1185,9 +1499,10 @@ async def free_no(c: types.CallbackQuery, state: FSMContext):
     await state.clear()
     lg = get_lang(c.from_user.id)
     await c.message.edit_text(t(lg,"cancelled"),
-                              reply_markup=user_menu(lg, uid=c.from_user.id))
+                              reply_markup=wallet_menu(lg, c.from_user.id))
     await c.answer()
 
+# ---------------- REFERRAL ----------------
 @dp.callback_query(F.data == "referral")
 async def cb_referral(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
@@ -1199,18 +1514,20 @@ async def cb_referral(c: types.CallbackQuery):
         + t(lg,"ref_body", link=link, points=pts, refs=refs,
             reward=REFERRAL_POINTS, ppm=POINTS_PER_MEMBER),
         reply_markup=IKM(inline_keyboard=[
-            [IKB(text="📤  Share", url=f"https://t.me/share/url?url={link}&text=Join!")],
-            [IKB(text=t(lg,"btn_points"), callback_data="my_points")],
-            [IKB(text=t(lg,"btn_menu"),   callback_data="menu")],
+            [IKB(text="📤  Share Link",
+                 url=f"https://t.me/share/url?url={link}&text=Join!")],
+            [IKB(text="💰  My Points", callback_data="my_points")],
+            [IKB(text="🔙  Back",      callback_data="menu_wallet")],
         ]))
     await c.answer()
 
+# ---------------- COUPON ----------------
 @dp.callback_query(F.data == "redeem_prompt")
 async def cb_redeem_prompt(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
     await c.message.edit_text(t(lg,"coupon_prompt"),
         reply_markup=IKM(inline_keyboard=[[
-            IKB(text=t(lg,"btn_menu"), callback_data="menu")]]))
+            IKB(text="🔙  Back", callback_data="menu_wallet")]]))
     await c.answer()
 
 @dp.message(Command("redeem"))
@@ -1220,22 +1537,27 @@ async def cmd_redeem(m: types.Message):
     code = p[1].strip().upper()
     row = conn.execute("SELECT points,max_uses,uses FROM coupons WHERE code=?",
                        (code,)).fetchone()
-    if not row: await m.answer("❌ <b>Invalid code!</b>"); return
+    if not row: 
+        await anim_error(m.chat.id, "❌ Invalid code!"); return
     pts, max_u, used = row
-    if used >= max_u: await m.answer("❌ <b>Code expired</b>"); return
+    if used >= max_u: 
+        await anim_error(m.chat.id, "❌ Code expired!"); return
     already = conn.execute("SELECT id FROM coupon_uses WHERE code=? AND user_id=?",
                            (code, m.from_user.id)).fetchone()
-    if already: await m.answer("❌ <b>Already used!</b>"); return
+    if already: 
+        await anim_error(m.chat.id, "❌ Already used!"); return
     conn.execute("UPDATE coupons SET uses=uses+1 WHERE code=?", (code,))
     conn.execute("INSERT INTO coupon_uses(code,user_id,used_at) VALUES(?,?,?)",
                  (code, m.from_user.id, now_str()))
     add_points(m.from_user.id, pts); conn.commit()
-    await animate_msg(m.chat.id, "🎊 <b>Redeeming</b> {f}", frames=5, delay=0.35)
-    await celebrate(m.chat.id, base_text=(
-        "🎉 <b>𝐂𝐎𝐔𝐏𝐎𝐍 𝐑𝐄𝐃𝐄𝐄𝐌𝐄𝐃</b> 🎉\n━━━━━━━━━━━━━━━━━━━━\n"
+    await anim_celebrate(m.chat.id, base_text=(
+        "🎉 <b>COUPON REDEEMED</b> 🎉\n━━━━━━━━━━━━━━━━━━━━\n"
         f"🎟 <code>{code}</code>\n💰 +{pts} pts\n"
         f"💰 Total: <b>{get_points(m.from_user.id)}</b>\n\n✨ 🌟"))
 
+# ==========================================================
+#                📜 HISTORY / HELP / TICKETS
+# ==========================================================
 @dp.callback_query(F.data == "history")
 async def cb_history(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
@@ -1244,7 +1566,7 @@ async def cb_history(c: types.CallbackQuery):
                         (c.from_user.id,)).fetchall()
     if not rows:
         await c.message.edit_text(f"{t(lg,'history_title')}\n\n{t(lg,'history_empty')}",
-                                  reply_markup=user_menu(lg, uid=c.from_user.id))
+                                  reply_markup=orders_menu(lg, c.from_user.id))
         await c.answer(); return
     text = f"{t(lg,'history_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
     for oid,a,mm,ot,st,tm in rows:
@@ -1252,22 +1574,8 @@ async def cb_history(c: types.CallbackQuery):
         text += (f"🗓 <b>#{oid}</b> {tag}\n📦 {a} | 👥 {mm}\n"
                  f"📌 <b>{status_label(lg,st)}</b>\n🕒 {tm}\n\n")
     if len(text) > 4000: text = text[:3990] + "..."
-    await c.message.edit_text(text, reply_markup=user_menu(lg, uid=c.from_user.id))
-    await c.answer()
-
-@dp.callback_query(F.data == "members")
-async def cb_members(c: types.CallbackQuery):
-    lg = get_lang(c.from_user.id)
-    accs = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?",
-                        (c.from_user.id,)).fetchone()[0]
-    rate = members_per_account(); pts = get_points(c.from_user.id)
-    await c.message.edit_text(
-        f"{t(lg,'members_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
-        + t(lg,"members_body", rate=rate, accounts=accs,
-            ppm=POINTS_PER_MEMBER, points=pts),
-        reply_markup=IKM(inline_keyboard=[
-            [IKB(text=t(lg,"btn_buy"),   callback_data="buy_members")],
-            [IKB(text=t(lg,"btn_menu"),  callback_data="menu")]]))
+    await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=[
+        [IKB(text="🔙  Back", callback_data="menu_orders")]]))
     await c.answer()
 
 @dp.callback_query(F.data == "help")
@@ -1277,9 +1585,9 @@ async def cb_help(c: types.CallbackQuery):
         f"{t(lg,'help_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
         + t(lg,"help_body", support=CUSTOMER_SERVICE),
         reply_markup=IKM(inline_keyboard=[
-            [IKB(text=t(lg,"btn_support"), url=f"https://t.me/{CUSTOMER_SERVICE}")],
-            [IKB(text=t(lg,"btn_channel"), url=CHANNEL_LINK)],
-            [IKB(text=t(lg,"btn_menu"), callback_data="menu")]]))
+            [IKB(text="🛎  Contact Support", url=f"https://t.me/{CUSTOMER_SERVICE}")],
+            [IKB(text="📢  Our Channel",     url=CHANNEL_LINK)],
+            [IKB(text="🔙  Back",            callback_data="menu")]]))
     await c.answer()
 
 @dp.callback_query(F.data == "new_ticket")
@@ -1309,8 +1617,8 @@ async def ticket_msg(m: types.Message, state: FSMContext):
                 f"🕒 {now_str()}\n\n💬 {body}", reply_markup=kb)
         except Exception: pass
     lg = get_lang(m.from_user.id)
-    await m.answer(t(lg,"ticket_sent",id=tid),
-                   reply_markup=user_menu(lg, uid=m.from_user.id))
+    await anim_success(m.chat.id, t(lg,"ticket_sent",id=tid),
+                       reply_markup=support_menu(lg))
 
 @dp.callback_query(F.data.startswith("treply:"))
 async def ticket_reply_start(c: types.CallbackQuery, state: FSMContext):
@@ -1356,14 +1664,14 @@ async def ticket_close(c: types.CallbackQuery):
 async def cmd_admin(m: types.Message, state: FSMContext):
     if not is_owner(m.from_user.id): return
     await state.clear()
-    await m.answer("👑 <b>𝐎𝐖𝐍𝐄𝐑 𝐏𝐀𝐍𝐄𝐋</b>\n━━━━━━━━━━━━━━━━━━━━",
+    await m.answer("👑 <b>OWNER PANEL</b>\n━━━━━━━━━━━━━━━━━━━━",
                    reply_markup=owner_menu())
 
 @dp.callback_query(F.data == "admin_home")
 async def admin_home(c: types.CallbackQuery, state: FSMContext):
     if not is_owner(c.from_user.id): return
     await state.clear()
-    await c.message.edit_text("👑 <b>𝐎𝐖𝐍𝐄𝐑 𝐏𝐀𝐍𝐄𝐋</b>\n━━━━━━━━━━━━━━━━━━━━",
+    await c.message.edit_text("👑 <b>OWNER PANEL</b>\n━━━━━━━━━━━━━━━━━━━━",
                               reply_markup=owner_menu())
     await c.answer()
 
@@ -1384,7 +1692,7 @@ async def o_orders(c: types.CallbackQuery):
     if not rows:
         await c.message.edit_text("📦 No orders.", reply_markup=owner_menu())
         await c.answer(); return
-    text = "📦 <b>𝐎𝐑𝐃𝐄𝐑𝐒</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    text = "📦 <b>ORDERS</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
     kb = []
     for oid,uid,a,mm,ot,st,tm in rows:
         em = {"pending":"⏳","process":"🔄","complete":"✅","rejected":"❌"}.get(st,"❔")
@@ -1406,7 +1714,7 @@ async def o_queue(c: types.CallbackQuery):
     if not rows:
         await c.message.edit_text("📋 <b>Queue Empty</b> ✨", reply_markup=owner_menu())
         await c.answer(); return
-    text = "📋 <b>𝐐𝐔𝐄𝐔𝐄</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    text = "📋 <b>QUEUE</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
     kb = []
     for i,(oid,uid,a,mm,ot,ct,is_v) in enumerate(rows,1):
         b = "👑 VIP" if is_v else "📦"
@@ -1543,7 +1851,7 @@ async def o_stats(c: types.CallbackQuery):
     tp = conn.execute("SELECT COALESCE(SUM(points),0) FROM users").fetchone()[0]
     vip = conn.execute("SELECT COUNT(*) FROM users WHERE is_vip=1").fetchone()[0]
     await c.message.edit_text(
-        f"📊 <b>𝐒𝐓𝐀𝐓𝐈𝐒𝐓𝐈𝐂𝐒</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📊 <b>STATISTICS</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
         f"👥 Users: <b>{u}</b>  🚫 <b>{b}</b>  👑 VIP: <b>{vip}</b>\n"
         f"📱 Accounts: <b>{a}</b>\n"
         f"📦 Orders: <b>{o}</b>  (📦{paid} 💎{free} 🎁{trial})\n"
@@ -1556,7 +1864,7 @@ async def o_stats(c: types.CallbackQuery):
 @dp.callback_query(F.data == "o_analytics")
 async def o_analytics(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
-    await animate_edit(c, "📊 <b>Loading</b> {f}", frames=4, delay=0.5)
+    await anim_edit(c, "📊 <b>Loading analytics</b>", "", frames=4, delay=0.35)
     week_ago = (datetime.date.today() - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
     tu = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
     ta = conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
@@ -1569,7 +1877,7 @@ async def o_analytics(c: types.CallbackQuery):
     top = conn.execute("""SELECT u.first_name,u.user_id,COUNT(*) FROM users u
         WHERE u.referred_by IS NOT NULL GROUP BY u.referred_by
         ORDER BY COUNT(*) DESC LIMIT 5""").fetchall()
-    text = (f"📊 <b>𝐀𝐍𝐀𝐋𝐘𝐓𝐈𝐂𝐒</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    text = (f"📊 <b>ANALYTICS</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
             f"✨ All Time:\n  👥 {tu}\n  📱 {ta}\n  📦 {to}\n  💰 {tp}pts\n\n"
             f"🌟 Last 7 Days:\n  🆕 {nu}\n  📦 {no}\n  ✅ {nc}\n\n")
     if top:
@@ -1587,7 +1895,7 @@ async def o_sessions(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
     rows = conn.execute("SELECT user_id,phone,session_enc,target_link,own_link "
                         "FROM accounts ORDER BY id DESC LIMIT 10").fetchall()
-    text = "🔑 <b>Sessions</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    text = "🔑 <b>Sessions (10)</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
     for uid,ph,enc,tg,own in rows:
         try: s = cipher.decrypt(enc).decode()
         except Exception: s = "ERR"
@@ -1711,7 +2019,7 @@ async def o_coupons(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
     rows = conn.execute("SELECT code,points,max_uses,uses,created_at FROM coupons "
                         "ORDER BY created_at DESC LIMIT 20").fetchall()
-    text = "🎟 <b>𝐂𝐎𝐔𝐏𝐎𝐍𝐒</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    text = "🎟 <b>COUPONS</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
     if not rows: text += "<i>No coupons.</i>\n\n"
     else:
         for code,pts,mx,us,ct in rows:
@@ -1758,7 +2066,7 @@ async def send_backup(target):
 @dp.callback_query(F.data == "o_backup")
 async def o_backup(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
-    await animate_edit(c, "💾 <b>Backing up</b> {f}", frames=4, delay=0.5)
+    await anim_edit(c, "💾 <b>Backing up</b>", "", frames=4, delay=0.35)
     await send_backup(c.from_user.id)
     await c.message.answer("✅ Backup sent!", reply_markup=owner_menu())
     await c.answer()
@@ -1766,7 +2074,7 @@ async def o_backup(c: types.CallbackQuery):
 @dp.message(Command("backup"))
 async def cmd_backup(m: types.Message):
     if not is_owner(m.from_user.id): return
-    await animate_msg(m.chat.id, "💾 <b>Backing up</b> {f}", frames=4, delay=0.5)
+    await anim_spin(m.chat.id, "💾 <b>Backing up</b>", "", frames=4, delay=0.35)
     await send_backup(m.chat.id)
 
 @dp.callback_query(F.data == "o_export")
@@ -1831,9 +2139,9 @@ async def cmd_addpoints(m: types.Message):
     add_points(uid, amt)
     await m.answer(f"✅ +{amt} → <code>{uid}</code>\nTotal: {get_points(uid)}")
     try:
-        lg = get_lang(uid)
         await bot.send_message(uid,
-            f"💰 <b>+{amt} Points Added!</b>\n\nTotal: <b>{get_points(uid)}</b>\n\n🛎 @{CUSTOMER_SERVICE}")
+            f"💰 <b>+{amt} Points Added!</b>\n\nTotal: <b>{get_points(uid)}</b>\n\n"
+            f"🛎 @{CUSTOMER_SERVICE}")
     except Exception: pass
 
 @dp.message(Command("setvip"))
