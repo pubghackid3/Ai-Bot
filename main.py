@@ -1,1702 +1,2167 @@
-"""Ultra SMS Forwarder Bot v18 - Final Premium Edition
-Features:
-  • Owner-only commands | Public buttons for group members
-  • Beautiful animated message cards
-  • Country flags + SIM operator + App detection
-  • Smart OTP with confidence score
-  • Analytics, Intruder log, Block system, CSV export
-  • Fixed loop (no repeat), 409 handling
-"""
-
-from __future__ import annotations
-
-import asyncio
-import csv
-import hashlib
-import io
-import logging
-import re
-import sqlite3
-from datetime import datetime, timedelta, timezone
-
-import aiosqlite
-import httpx
-import phonenumbers
-
-# ═══════════════════════════════════════════════════════
-# CONFIGURATION
-# ═══════════════════════════════════════════════════════
-GREEN_SMS_API = "http://147.135.212.197/crapi/had/viewstats"
-GREEN_SMS_API_KEY = "Qk5VR0RBUzRndWVCgG6Bfnp0d3RHbpNTVGCFQ2NpmHtfblVrhJZTig=="
-TELEGRAM_GROUP_ID = "-1004330079864"
-TELEGRAM_OWNER_ID = 8762845215
-TELEGRAM_CHANNEL_URL = "https://t.me/RN_OTP_1"
-BOT_USERNAME = "RN_OTP_PROVIDER_BOT"
-BUTTON_BOT_USERNAME = "RN_OTP1_bot"
-BOT_TOKEN = "8683238433:AAFfJx-3ZT-Qrll-vZxq0toogD9_skFsxv4"
-
-POLL_SECONDS = 5
-DATABASE_FILE = "sms_telegram_bot.sqlite3"
-MAX_RECORDS = 200
-MAX_BATCHES = 100
-CLEANUP_DAYS = 30
-ANIMATION_ENABLED = True
-PKT_OFFSET_HOURS = 5
-
-# ═══════════════════════════════════════════════════════
-
-runtime_last_error = None
-runtime_last_poll = None
-http_client = None
-current_api_index = 0
-api_keys = []
-blocked_users = set()
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(message)s",
-    datefmt="%H:%M:%S",
+# ==========================================================
+#   🚀 ULTIMATE TELEGRAM BOT — ALL FEATURES
+#   Features: Multi-Lang, Force-Join, Points Referral, Unique Accounts,
+#   Unlimited Accounts, Per-Account Links, Free Order, Trial, Coupons,
+#   Tickets, Multi-Owner, Queue, Anti-Flood, Reminder, Analytics,
+#   Auto Backup, Animations, Beautiful Welcome
+# ==========================================================
+import asyncio, os, io, csv, sqlite3, datetime, logging, time, random
+from aiogram import Bot, Dispatcher, F, types, BaseMiddleware
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import (
+    InlineKeyboardMarkup as IKM,
+    InlineKeyboardButton as IKB,
+    BufferedInputFile,
 )
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
+from telethon import TelegramClient
+from telethon.sessions import StringSession
+from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError
+from cryptography.fernet import Fernet
 
-logger = logging.getLogger("greensms_bot")
+# ==========================================================
+#                    ⚙️ CONFIG
+# ==========================================================
+BOT_TOKEN        = "8781096796:AAGGfb-DLH1oH7YkdnqVxJKfnNL2EPsEf5o"
+API_ID           = 30217812
+API_HASH         = "d21066a90786cf2dd348b907ece69d24"
+OWNER_ID         = 8762845215
+OWNER_GROUP_ID   = -1003975078444
+CUSTOMER_SERVICE = "Ghost_Code_404"
 
-# ═══════════════════════════════════════════════════════
-# EMOJI & DESIGN CONSTANTS
-# ═══════════════════════════════════════════════════════
-E_BELL = "\U0001F514"
-E_CLIP = "\U0001F4CB"
-E_EYES = "\U0001F440"
-E_MEGA = "\U0001F4E2"
-E_BOT = "\U0001F916"
-E_CROSS = "\u274C"
-E_CHECK = "\u2705"
-E_GREEN = "\U0001F7E2"
-E_RED = "\U0001F534"
-E_YELLOW = "\U0001F7E1"
-E_BLUE = "\U0001F535"
-E_KEY = "\U0001F511"
-E_OLDKEY = "\U0001F5DD"
-E_CHART = "\U0001F4CA"
-E_OUT = "\U0001F4E4"
-E_HOUR = "\u23F3"
-E_USER = "\U0001F464"
-E_CLOCK = "\U0001F550"
-E_TIME = "\U0001F552"
-E_MSG = "\U0001F4AC"
-E_ROCKET = "\U0001F680"
-E_FILE = "\U0001F4C1"
-E_DB = "\U0001F5C4"
-E_BOLT = "\u26A1"
-E_GLOBE = "\U0001F310"
-E_SPARKLE = "\u2728"
-E_DIAMOND = "\U0001F48E"
-E_CROWN = "\U0001F451"
-E_TAG = "\U0001F3F7"
-E_SCROLL = "\U0001F4DC"
-E_PHONE = "\U0001F4DE"
-E_SIGNAL = "\U0001F4F6"
-E_SHIELD = "\U0001F6E1"
-E_CAL = "\U0001F4C5"
-E_LOCK = "\U0001F510"
-E_STAR = "\u2B50"
-E_FIRE = "\U0001F525"
-E_INBOX = "\U0001F4E9"
-E_BOX = "\U0001F4E6"
-E_MAGIC = "\U0001FA84"
+# 🔒 Force Join — apna channel username yahan daalein
+# Multiple: ["@ch1","@ch2"]  |  Private: [-1001234567890]
+FORCE_CHANNELS   = ["@ToolsByRehan"]
 
-DIVIDER = "\u2501" * 16
-DIV_SHORT = "\u2501" * 10
-DOT = "\u2022"
+MAX_ACCOUNTS_PER_USER   = 99999        # unlimited
+DEFAULT_DELIVERY        = "24 to 48 hours"
+DEFAULT_MEMBERS_PER_ACC = 5
+REFERRAL_POINTS         = 100
+POINTS_PER_MEMBER       = 2
 
-# ═══════════════════════════════════════════════════════
-# COUNTRY DATA
-# ═══════════════════════════════════════════════════════
-COUNTRIES = {
-    "PK": ("\U0001F1F5\U0001F1F0", "Pakistan"),
-    "US": ("\U0001F1FA\U0001F1F8", "United States"),
-    "GB": ("\U0001F1EC\U0001F1E7", "United Kingdom"),
-    "IN": ("\U0001F1EE\U0001F1F3", "India"),
-    "CA": ("\U0001F1E8\U0001F1E6", "Canada"),
-    "AU": ("\U0001F1E6\U0001F1FA", "Australia"),
-    "DE": ("\U0001F1E9\U0001F1EA", "Germany"),
-    "FR": ("\U0001F1EB\U0001F1F7", "France"),
-    "IT": ("\U0001F1EE\U0001F1F9", "Italy"),
-    "ES": ("\U0001F1EA\U0001F1F8", "Spain"),
-    "BR": ("\U0001F1E7\U0001F1F7", "Brazil"),
-    "MX": ("\U0001F1F2\U0001F1FD", "Mexico"),
-    "JP": ("\U0001F1EF\U0001F1F5", "Japan"),
-    "CN": ("\U0001F1E8\U0001F1F3", "China"),
-    "RU": ("\U0001F1F7\U0001F1FA", "Russia"),
-    "ZA": ("\U0001F1FF\U0001F1E6", "South Africa"),
-    "NG": ("\U0001F1F3\U0001F1EC", "Nigeria"),
-    "EG": ("\U0001F1EA\U0001F1EC", "Egypt"),
-    "SA": ("\U0001F1F8\U0001F1E6", "Saudi Arabia"),
-    "AE": ("\U0001F1E6\U0001F1EA", "UAE"),
-    "BD": ("\U0001F1E7\U0001F1E9", "Bangladesh"),
-    "ID": ("\U0001F1EE\U0001F1E9", "Indonesia"),
-    "MY": ("\U0001F1F2\U0001F1FE", "Malaysia"),
-    "SG": ("\U0001F1F8\U0001F1EC", "Singapore"),
-    "HK": ("\U0001F1ED\U0001F1F0", "Hong Kong"),
-    "TR": ("\U0001F1F9\U0001F1F7", "Turkey"),
-    "PL": ("\U0001F1F5\U0001F1F1", "Poland"),
-    "UA": ("\U0001F1FA\U0001F1E6", "Ukraine"),
-    "RO": ("\U0001F1F7\U0001F1F4", "Romania"),
-    "NL": ("\U0001F1F3\U0001F1F1", "Netherlands"),
-    "BE": ("\U0001F1E7\U0001F1EA", "Belgium"),
-    "CH": ("\U0001F1E8\U0001F1ED", "Switzerland"),
-    "AT": ("\U0001F1E6\U0001F1F9", "Austria"),
-    "SE": ("\U0001F1F8\U0001F1EA", "Sweden"),
-    "NO": ("\U0001F1F3\U0001F1F4", "Norway"),
-    "DK": ("\U0001F1E9\U0001F1F0", "Denmark"),
-    "FI": ("\U0001F1EB\U0001F1EE", "Finland"),
-    "IE": ("\U0001F1EE\U0001F1EA", "Ireland"),
-    "PT": ("\U0001F1F5\U0001F1F9", "Portugal"),
-    "GR": ("\U0001F1EC\U0001F1F7", "Greece"),
-    "KR": ("\U0001F1F0\U0001F1F7", "South Korea"),
-    "NZ": ("\U0001F1F3\U0001F1FF", "New Zealand"),
-    "TW": ("\U0001F1F9\U0001F1FC", "Taiwan"),
-    "TH": ("\U0001F1F9\U0001F1ED", "Thailand"),
-    "VN": ("\U0001F1FB\U0001F1F3", "Vietnam"),
-    "PH": ("\U0001F1F5\U0001F1ED", "Philippines"),
+# Multi-owner (runtime populate hote hain)
+OWNER_IDS = [OWNER_ID]
+HELPERS   = []
+VIP_USERS = {}
+
+# Anti-Flood
+FLOOD_LIMIT     = 8
+FLOOD_WINDOW    = 10
+FLOOD_MUTE_TIME = 300
+FLOOD_CACHE: dict = {}
+FLOOD_MUTED: dict = {}
+
+# Backup
+BACKUP_HOUR_UTC = 3
+
+# Trial
+TRIAL_MEMBERS = 5
+TRIAL_ENABLED = True
+
+# VIP
+VIP_DISCOUNT = 20
+
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s | %(levelname)s | %(message)s")
+
+# ---------- Fernet key ----------
+KEY_FILE = ".fernet_key"
+if os.path.exists(KEY_FILE):
+    with open(KEY_FILE, "rb") as f: FERNET_KEY = f.read().strip()
+else:
+    FERNET_KEY = Fernet.generate_key()
+    with open(KEY_FILE, "wb") as f: f.write(FERNET_KEY)
+cipher = Fernet(FERNET_KEY)
+
+bot = Bot(BOT_TOKEN, parse_mode="HTML")
+dp  = Dispatcher(storage=MemoryStorage())
+CLIENTS: dict = {}
+
+# ---------- Animation frames ----------
+SPINNER  = ["🕐","🕑","🕒","🕓","🕔","🕕","🕖","🕗","🕘","🕙","🕚","🕛"]
+PROGRESS = ["░░░░░░░░░░","█░░░░░░░░░","██░░░░░░░░","███░░░░░░░",
+            "████░░░░░░","█████░░░░░","██████░░░░","███████░░░",
+            "████████░░","█████████░","██████████"]
+
+# ==========================================================
+#                    🌐 TRANSLATIONS
+# ==========================================================
+WELCOME_EN = (
+    "╔══════════════════════════╗\n"
+    "║   ✨  𝐖 𝐄 𝐋 𝐂 𝐎 𝐌 𝐄  ✨   ║\n"
+    "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n"
+    "╚══════════════════════════╝\n\n"
+    "👋 <b>Hello</b>, <i>{name}</i>!\n"
+    "🎯 <b>Your Telegram Manager Bot</b>\n\n"
+    "━━━━━━━━━━━━━━━━━━━━━━\n"
+    "💎 Link unlimited accounts\n"
+    "🎯 Set targets easily\n"
+    "💰 Earn points via referral\n"
+    "🎁 Get free members\n"
+    "🌐 5 languages supported\n"
+    "━━━━━━━━━━━━━━━━━━━━━━\n"
+    "✨ Let's get started! 👇"
+)
+WELCOME_UR = (
+    "╔══════════════════════════╗\n"
+    "║   ✨  𝐗𝐎𝐒𝐇 𝐀𝐀𝐌𝐃𝐄𝐄𝐃  ✨   ║\n"
+    "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n"
+    "╚══════════════════════════╝\n\n"
+    "👋 <b>السلام علیکم</b>، <i>{name}</i>!\n"
+    "🎯 <b>آپ کا ٹیلیگرام منیجر بوٹ</b>\n\n"
+    "━━━━━━━━━━━━━━━━━━━━━━\n"
+    "💎 لا محدود اکاؤنٹس\n"
+    "🎯 آسان ٹارگٹ سیٹنگ\n"
+    "💰 ریفرل سے پوائنٹس\n"
+    "🎁 فری ممبرز\n"
+    "🌐 5 زبانیں\n"
+    "━━━━━━━━━━━━━━━━━━━━━━\n"
+    "✨ چلیے شروع کریں! 👇"
+)
+WELCOME_HI = (
+    "╔══════════════════════════╗\n"
+    "║   ✨  𝐒𝐖𝐀𝐆𝐀𝐓 𝐇𝐀𝐈  ✨   ║\n"
+    "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n"
+    "╚══════════════════════════╝\n\n"
+    "👋 <b>नमस्ते</b>, <i>{name}</i>!\n"
+    "🎯 <b>आपका टेलीग्राम मैनेजर बॉट</b>\n\n"
+    "━━━━━━━━━━━━━━━━━━━━━━\n"
+    "💎 असीमित अकाउंट\n"
+    "🎯 आसान टार्गेट\n"
+    "💰 रेफरल से पॉइंट्स\n"
+    "🎁 फ्री मेंबर\n"
+    "🌐 5 भाषाएं\n"
+    "━━━━━━━━━━━━━━━━━━━━━━\n"
+    "✨ चलिए शुरू करें! 👇"
+)
+WELCOME_RU = (
+    "╔══════════════════════════╗\n"
+    "║   ✨  𝐊𝐇𝐔𝐒𝐇 𝐀𝐀𝐌𝐃𝐄𝐄𝐃  ✨   ║\n"
+    "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n"
+    "╚══════════════════════════╝\n\n"
+    "👋 <b>Assalam-o-Alaikum</b>, <i>{name}</i>!\n"
+    "🎯 <b>Aap ka Telegram Manager Bot</b>\n\n"
+    "━━━━━━━━━━━━━━━━━━━━━━\n"
+    "💎 Unlimited accounts\n"
+    "🎯 Aasan target\n"
+    "💰 Referral points\n"
+    "🎁 Free members\n"
+    "🌐 5 zabanain\n"
+    "━━━━━━━━━━━━━━━━━━━━━━\n"
+    "✨ Chalein shuru karein! 👇"
+)
+WELCOME_AR = (
+    "╔══════════════════════════╗\n"
+    "║   ✨  𝐖 𝐄 𝐋 𝐂 𝐎 𝐌 𝐄  ✨   ║\n"
+    "║  💫 ⚡ 🌟 💎 🌟 ⚡ 💫  ║\n"
+    "╚══════════════════════════╝\n\n"
+    "👋 <b>مرحباً</b>، <i>{name}</i>!\n"
+    "🎯 <b>بوت إدارة تيليجرام</b>\n\n"
+    "━━━━━━━━━━━━━━━━━━━━━━\n"
+    "💎 اربط حسابات\n"
+    "🎯 عيّن الأهداف\n"
+    "💰 نقاط الإحالة\n"
+    "🎁 أعضاء مجاناً\n"
+    "🌐 5 لغات\n"
+    "━━━━━━━━━━━━━━━━━━━━━━\n"
+    "✨ هيّا نبدأ! 👇"
+)
+
+TEXTS = {
+"en": {
+    "welcome": WELCOME_EN,
+    "menu_title": "🏠 <b>𝐌𝐀𝐈𝐍 𝐌𝐄𝐍𝐔</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👇 <i>Choose an option below</i>",
+    "choose_language": "🌐 <b>𝐒𝐄𝐋𝐄𝐂𝐓 𝐋𝐀𝐍𝐆𝐔𝐀𝐆𝐄</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👇 <i>Choose your language:</i>",
+    "language_set": "✨ <b>𝐋𝐚𝐧𝐠𝐮𝐚𝐠𝐞 𝐒𝐞𝐭</b> ✨\n━━━━━━━━━━━━━━━━━━━━━━\n\n✅ Now: <b>🇬🇧 English</b>\n💡 Change anytime: 🌐",
+    "btn_add":"➕  Add Account","btn_my":"📊  My Accounts","btn_submit":"📦  Submit Order",
+    "btn_members":"👥  Members","btn_history":"📜  History","btn_refer":"🎁  Refer & Earn",
+    "btn_ticket":"🎫  Support","btn_support":"🛎  Customer Service","btn_lang":"🌐  Language",
+    "btn_help":"❓  Help","btn_menu":"🏠  Menu","btn_cancel":"❌  Cancel","btn_back":"🔙  Back",
+    "btn_free":"💎  Free Order","btn_points":"💰  My Points","btn_trial":"🎁  Free Trial (5)",
+    "btn_coupon":"🎟  Redeem Coupon",
+    "add_title":"➕ <b>ADD ACCOUNT</b>",
+    "add_guide":"📖 Send your Telegram phone number.\n\n✍️ Example: <code>+923001234567</code>\n\n⚠️ Text only. Each number once.",
+    "otp_guide":"📩 <b>Code sent!</b>\n\n✍️ Enter the code.",
+    "pwd_guide":"🔐 <b>2FA Password needed</b>\n\n✍️ Send password.",
+    "linked_ok":"✅ <b>Account Added</b>\n\n📱 <code>{phone}</code>",
+    "phone_used":"❌ <b>Number Already Linked</b>\n\n<code>{phone}</code>",
+    "target_title":"🎯 <b>SET TARGET</b>","target_guide":"📖 <code>https://t.me/yourgroup</code>",
+    "target_saved":"✅ <b>Saved</b>\n🎯 {link}",
+    "own_title":"🏠 <b>YOUR GROUP</b>","own_guide":"📖 <code>https://t.me/mygroups</code>",
+    "own_saved":"✅ <b>Saved</b>\n🏠 {link}",
+    "my_title":"📊 <b>MY ACCOUNTS</b>","no_accounts":"❌ No accounts yet.",
+    "submit_title":"📦 <b>SUBMIT ORDER</b>","submit_no_acc":"❌ No accounts.",
+    "submit_incomplete":"⚠️ <b>Not Ready</b>\n\nSome accounts need target.",
+    "history_title":"📜 <b>HISTORY</b>","history_empty":"❌ No orders.",
+    "status_pending":"⏳ Pending","status_process":"🔄 Processing",
+    "status_complete":"✅ Complete","status_rejected":"❌ Rejected",
+    "members_title":"👥 <b>MEMBER INFO</b>",
+    "members_body":"📊 <b>Rates:</b>\n• Paid: <b>1 acc = {rate} members</b>\n• Free: <b>{ppm} points = 1 member</b>\n\n📱 Accounts: <b>{accounts}</b>\n💰 Points: <b>{points}</b>",
+    "help_title":"❓ <b>HELP</b>",
+    "help_body":"📖 <b>Steps:</b>\n1️⃣ Add Account\n2️⃣ Set target & own\n3️⃣ Submit Order\n\n💎 <b>Free via points:</b>\n🎁 Refer → +100 points\n💎 2 points = 1 member\n\n🎟 Redeem coupons!\n\n🛎 @{support}",
+    "invalid_link":"❌ Invalid link.","invalid_phone":"❌ Invalid number.",
+    "cancelled":"❌ <b>Cancelled</b>","banned":"🚫 Banned","rate_limited":"⏳ Slow down.",
+    "ref_title":"🎁 <b>REFER & EARN</b>",
+    "ref_body":"🔗 <code>{link}</code>\n\n💰 Points: <b>{points}</b>\n👥 Referrals: <b>{refs}</b>\n\n💡 Friend links 1st account → <b>+{reward} points</b>\n💎 {ppm} points = 1 member",
+    "ref_reward":"🎉 <b>+{pts} Points!</b>\n\n{name} linked first account.\n💰 Total: <b>{total}</b>",
+    "new_ref_notice":"👋 Welcome! Your referrer gets <b>{pts} pts</b> after you link 1st account.",
+    "points_title":"💰 <b>MY POINTS</b>",
+    "points_body":"💰 Points: <b>{points}</b>\n💎 {ppm} pts = 1 member\n👥 Can order: <b>{members} members</b>\n\n🎁 Refer to earn more!",
+    "free_title":"💎 <b>FREE ORDER</b>",
+    "free_intro":"📖 Send <b>target group link</b>:",
+    "free_own":"✅ Now send <b>your own group link</b>:",
+    "free_amount":"✅ How many members?\n💎 {ppm} pts/member\n💰 Your: <b>{points}</b>\n\n✍️ Example: <code>25</code>",
+    "free_no_points":"❌ <b>Not Enough Points</b>\n💰 You: {points}\n💎 Need: {need}",
+    "free_invalid_num":"❌ Send a number ≥ 1.",
+    "free_confirm":"💎 <b>CONFIRM</b>\n\n👥 Members: <b>{members}</b>\n💰 Cost: <b>{cost} pts</b>\n💰 Remaining: <b>{remaining}</b>\n🎯 {target}\n🏠 {own}\n\nConfirm?",
+    "free_done":"🎉 <b>Order Sent!</b>\n👥 {members}\n💰 {cost} pts\n💰 Left: {remaining}\n⏱ {time}",
+    "btn_confirm":"✅  Confirm","btn_edit":"✏️  Cancel",
+    "ticket_title":"🎫 <b>SUPPORT TICKET</b>","ticket_guide":"✍️ Describe issue.",
+    "ticket_sent":"✅ Ticket <b>#{id}</b> sent.",
+    "coupon_prompt":"🎟 <b>REDEEM COUPON</b>\n\n✍️ <code>/redeem YOURCODE</code>",
+    "owner_msg_status":"📢 <b>Order Update</b>\n#{id}: <b>{status}</b>\n💬 {note}",
+    "owner_msg_custom":"📩 <b>Support</b>\n\n{msg}",
+},
+"ur": {
+    "welcome": WELCOME_UR,
+    "menu_title": "🏠 <b>𝐌𝐀𝐈𝐍 𝐌𝐄𝐍𝐔</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👇 <i>آپشن منتخب کریں</i>",
+    "choose_language": "🌐 <b>𝐙𝐀𝐁𝐀𝐍 𝐂𝐇𝐔𝐍𝐄𝐈𝐍</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👇 <i>زبان منتخب کریں:</i>",
+    "language_set": "✨ <b>𝐙𝐚𝐛𝐚𝐧 𝐒𝐞𝐭</b> ✨\n━━━━━━━━━━━━━━━━━━━━━━\n\n✅ اب: <b>🇵🇰 اردو</b>\n💡 کبھی بھی بدلیں: 🌐",
+    "btn_add":"➕  اکاؤنٹ شامل","btn_my":"📊  میرے اکاؤنٹس","btn_submit":"📦  آرڈر بھیجیں",
+    "btn_members":"👥  ممبرز","btn_history":"📜  ہسٹری","btn_refer":"🎁  ریفر کریں",
+    "btn_ticket":"🎫  سپورٹ","btn_support":"🛎  کسٹمر سروس","btn_lang":"🌐  زبان",
+    "btn_help":"❓  مدد","btn_menu":"🏠  مینو","btn_cancel":"❌  منسوخ","btn_back":"🔙  واپس",
+    "btn_free":"💎  فری آرڈر","btn_points":"💰  میرے پوائنٹس","btn_trial":"🎁  فری ٹرائل (5)",
+    "btn_coupon":"🎟  کوپن استعمال",
+    "add_title":"➕ <b>اکاؤنٹ شامل</b>",
+    "add_guide":"📖 اپنا نمبر بھیجیں۔\n\n✍️ <code>+923001234567</code>\n\n⚠️ ہر نمبر ایک بار۔",
+    "otp_guide":"📩 <b>کوڈ بھیج دیا!</b>\n\n✍️ کوڈ لکھیں۔",
+    "pwd_guide":"🔐 <b>2FA پاس ورڈ</b>\n\n✍️ بھیجیں۔",
+    "linked_ok":"✅ <b>اکاؤنٹ شامل</b>\n📱 <code>{phone}</code>",
+    "phone_used":"❌ <b>نمبر پہلے سے لنک ہے</b>\n<code>{phone}</code>",
+    "target_title":"🎯 <b>ٹارگٹ گروپ</b>","target_guide":"📖 <code>https://t.me/yourgroup</code>",
+    "target_saved":"✅ <b>محفوظ</b>\n🎯 {link}",
+    "own_title":"🏠 <b>آپ کا گروپ</b>","own_guide":"📖 <code>https://t.me/mygroups</code>",
+    "own_saved":"✅ <b>محفوظ</b>\n🏠 {link}",
+    "my_title":"📊 <b>میرے اکاؤنٹس</b>","no_accounts":"❌ کوئی اکاؤنٹ نہیں۔",
+    "submit_title":"📦 <b>آرڈر بھیجیں</b>","submit_no_acc":"❌ اکاؤنٹ نہیں۔",
+    "submit_incomplete":"⚠️ <b>مکمل نہیں</b>\n\nکچھ اکاؤنٹس کا ٹارگٹ سیٹ نہیں۔",
+    "history_title":"📜 <b>ہسٹری</b>","history_empty":"❌ خالی۔",
+    "status_pending":"⏳ زیرِ التوا","status_process":"🔄 پروسیسنگ",
+    "status_complete":"✅ مکمل","status_rejected":"❌ مسترد",
+    "members_title":"👥 <b>ممبرز</b>",
+    "members_body":"📊 <b>شرح:</b>\n• پیڈ: <b>1 اکاؤنٹ = {rate}</b>\n• فری: <b>{ppm} پوائنٹس = 1</b>\n\n📱 اکاؤنٹس: <b>{accounts}</b>\n💰 پوائنٹس: <b>{points}</b>",
+    "help_title":"❓ <b>مدد</b>",
+    "help_body":"📖 <b>اقدامات:</b>\n1️⃣ اکاؤنٹ\n2️⃣ ٹارگٹ + اپنا گروپ\n3️⃣ آرڈر\n\n💎 <b>فری:</b>\n🎁 ریفر → +100\n💎 2 = 1 ممبر\n\n🎟 کوپن!\n\n🛎 @{support}",
+    "invalid_link":"❌ لنک","invalid_phone":"❌ نمبر","cancelled":"❌ <b>منسوخ</b>",
+    "banned":"🚫 بلاک","rate_limited":"⏳",
+    "ref_title":"🎁 <b>ریفر کریں</b>",
+    "ref_body":"🔗 <code>{link}</code>\n\n💰 پوائنٹس: <b>{points}</b>\n👥 ریفرلز: <b>{refs}</b>\n\n💡 دوست پہلا اکاؤنٹ → <b>+{reward}</b>\n💎 {ppm} = 1 ممبر",
+    "ref_reward":"🎉 <b>+{pts} پوائنٹس!</b>\n\n{name} نے پہلا اکاؤنٹ لنک کیا۔\n💰 کل: <b>{total}</b>",
+    "new_ref_notice":"👋 خوش آمدید! ریفرر کو <b>{pts}</b> ملیں گے۔",
+    "points_title":"💰 <b>میرے پوائنٹس</b>",
+    "points_body":"💰 پوائنٹس: <b>{points}</b>\n💎 {ppm} = 1 ممبر\n👥 آپ {members} منگوا سکتے ہیں۔\n\n🎁 ریفر کریں!",
+    "free_title":"💎 <b>فری آرڈر</b>",
+    "free_intro":"📖 ٹارگٹ گروپ لنک بھیجیں:",
+    "free_own":"✅ اب اپنا گروپ لنک بھیجیں:",
+    "free_amount":"✅ تعداد؟\n💎 {ppm}/ممبر\n💰 آپ کے: <b>{points}</b>\n\n✍️ مثال: <code>25</code>",
+    "free_no_points":"❌ <b>کم</b>\n💰 {points}\n💎 چاہیے: {need}",
+    "free_invalid_num":"❌ نمبر بھیجیں۔",
+    "free_confirm":"💎 <b>تصدیق</b>\n👥 {members}\n💰 {cost}\n💰 باقی: {remaining}\n🎯 {target}\n🏠 {own}",
+    "free_done":"🎉 <b>بھیج دیا!</b>\n👥 {members}\n💰 {cost}\n💰 باقی: {remaining}\n⏱ {time}",
+    "btn_confirm":"✅  تصدیق","btn_edit":"✏️  منسوخ",
+    "ticket_title":"🎫 <b>سپورٹ ٹکٹ</b>","ticket_guide":"✍️ مسئلہ لکھیں۔",
+    "ticket_sent":"✅ ٹکٹ <b>#{id}</b>",
+    "coupon_prompt":"🎟 <b>کوپن</b>\n\n<code>/redeem CODE</code>",
+    "owner_msg_status":"📢 #{id}: {status}\n💬 {note}",
+    "owner_msg_custom":"📩 {msg}",
+},
+"hi": {
+    "welcome": WELCOME_HI,
+    "menu_title":"🏠 <b>𝐌𝐄𝐍𝐘𝐔</b>\n👇 चुनें",
+    "choose_language":"🌐 <b>भाषा चुनें</b>","language_set":"✅ <b>हिंदी</b>",
+    "btn_add":"➕  जोड़ें","btn_my":"📊  अकाउंट","btn_submit":"📦  ऑर्डर",
+    "btn_members":"👥  मेंबर","btn_history":"📜  हिस्ट्री","btn_refer":"🎁  रेफर",
+    "btn_ticket":"🎫  सपोर्ट","btn_support":"🛎  सर्विस","btn_lang":"🌐  भाषा",
+    "btn_help":"❓  मदद","btn_menu":"🏠  मेन्यू","btn_cancel":"❌  रद्द","btn_back":"🔙  वापस",
+    "btn_free":"💎  फ्री ऑर्डर","btn_points":"💰  पॉइंट्स","btn_trial":"🎁  फ्री ट्रायल",
+    "btn_coupon":"🎟  कूपन",
+    "add_title":"➕","add_guide":"📖 नंबर भेजें।","otp_guide":"📩 कोड!",
+    "pwd_guide":"🔐 2FA","linked_ok":"✅ <code>{phone}</code>",
+    "phone_used":"❌ पहले से लिंक",
+    "target_title":"🎯","target_guide":"📖 t.me/...","target_saved":"✅ {link}",
+    "own_title":"🏠","own_guide":"📖 t.me/...","own_saved":"✅ {link}",
+    "my_title":"📊","no_accounts":"❌","submit_title":"📦",
+    "submit_no_acc":"❌","submit_incomplete":"⚠️",
+    "history_title":"📜","history_empty":"❌",
+    "status_pending":"⏳","status_process":"🔄","status_complete":"✅","status_rejected":"❌",
+    "members_title":"👥","members_body":"• 1 acc={rate}\n• {ppm}=1 member\n📱{accounts}\n💰{points}",
+    "help_title":"❓","help_body":"रेफर→+100\n2=1 member\n🛎 @{support}",
+    "invalid_link":"❌","invalid_phone":"❌","cancelled":"❌","banned":"🚫","rate_limited":"⏳",
+    "ref_title":"🎁","ref_body":"{link}\n💰{points}\n👥{refs}\n+{reward}",
+    "ref_reward":"🎉+{pts}\n{name}\n💰{total}","new_ref_notice":"👋 +{pts}",
+    "points_title":"💰","points_body":"💰{points}\n{ppm}=1\n👥{members}",
+    "free_title":"💎","free_intro":"📖 target:","free_own":"📖 अपना ग्रुप:",
+    "free_amount":"कितने?\n{ppm}/member\n💰{points}",
+    "free_no_points":"❌ {points} चाहिए {need}","free_invalid_num":"❌",
+    "free_confirm":"💎{members}\n💰{cost}\n{remaining}\n🎯{target}\n🏠{own}",
+    "free_done":"🎉{members}\n💰{cost}\n{remaining}",
+    "btn_confirm":"✅","btn_edit":"✏️",
+    "ticket_title":"🎫","ticket_guide":"लिखें।","ticket_sent":"✅#{id}",
+    "coupon_prompt":"🎟 /redeem CODE",
+    "owner_msg_status":"📢#{id}: {status}","owner_msg_custom":"📩{msg}",
+},
+"roman_ur": {
+    "welcome": WELCOME_RU,
+    "menu_title":"🏠 <b>MAIN MENU</b>\n👇 Chunein",
+    "choose_language":"🌐 <b>Zaban chunein</b>","language_set":"✅ <b>Roman Urdu</b>",
+    "btn_add":"➕  Account","btn_my":"📊  Accounts","btn_submit":"📦  Order",
+    "btn_members":"👥  Members","btn_history":"📜  History","btn_refer":"🎁  Refer",
+    "btn_ticket":"🎫  Support","btn_support":"🛎  Service","btn_lang":"🌐  Zaban",
+    "btn_help":"❓  Madad","btn_menu":"🏠  Menu","btn_cancel":"❌  Cancel","btn_back":"🔙  Wapas",
+    "btn_free":"💎  Free Order","btn_points":"💰  Points","btn_trial":"🎁  Free Trial",
+    "btn_coupon":"🎟  Redeem Coupon",
+    "add_title":"➕","add_guide":"📖 Number bhejein.","otp_guide":"📩 Code!",
+    "pwd_guide":"🔐 2FA","linked_ok":"✅ <code>{phone}</code>",
+    "phone_used":"❌ Number pehle se linked",
+    "target_title":"🎯","target_guide":"📖 t.me/...","target_saved":"✅ {link}",
+    "own_title":"🏠","own_guide":"📖 t.me/...","own_saved":"✅ {link}",
+    "my_title":"📊","no_accounts":"❌","submit_title":"📦",
+    "submit_no_acc":"❌","submit_incomplete":"⚠️",
+    "history_title":"📜","history_empty":"❌",
+    "status_pending":"⏳","status_process":"🔄","status_complete":"✅","status_rejected":"❌",
+    "members_title":"👥","members_body":"1={rate}\n{ppm}=1\n📱{accounts}\n💰{points}",
+    "help_title":"❓","help_body":"Refer→+100\n2=1 member\n🛎 @{support}",
+    "invalid_link":"❌","invalid_phone":"❌","cancelled":"❌","banned":"🚫","rate_limited":"⏳",
+    "ref_title":"🎁","ref_body":"{link}\n💰{points}\n👥{refs}\n+{reward}",
+    "ref_reward":"🎉+{pts}\n{name}\n💰{total}","new_ref_notice":"👋 +{pts}",
+    "points_title":"💰","points_body":"💰{points}\n{ppm}=1\n👥{members}",
+    "free_title":"💎","free_intro":"📖 Target:","free_own":"📖 Apna group:",
+    "free_amount":"Kitne?\n{ppm}/member\n💰{points}",
+    "free_no_points":"❌ {points} Chahiye {need}","free_invalid_num":"❌",
+    "free_confirm":"💎{members}\n💰{cost}\n{remaining}\n🎯{target}\n🏠{own}",
+    "free_done":"🎉{members}\n💰{cost}\n{remaining}",
+    "btn_confirm":"✅","btn_edit":"✏️",
+    "ticket_title":"🎫","ticket_guide":"Likhein.","ticket_sent":"✅#{id}",
+    "coupon_prompt":"🎟 /redeem CODE",
+    "owner_msg_status":"📢#{id}: {status}","owner_msg_custom":"📩{msg}",
+},
+"ar": {
+    "welcome": WELCOME_AR,
+    "menu_title":"🏠 <b>𝐀𝐋 𝐐𝐀𝐈𝐌𝐀𝐇</b>\n👇 اختر",
+    "choose_language":"🌐 <b>اختر اللغة</b>","language_set":"✅ <b>العربية</b>",
+    "btn_add":"➕  إضافة","btn_my":"📊  حساباتي","btn_submit":"📦  الطلب",
+    "btn_members":"👥  الأعضاء","btn_history":"📜  السجل","btn_refer":"🎁  إحالة",
+    "btn_ticket":"🎫  الدعم","btn_support":"🛎  خدمة","btn_lang":"🌐  اللغة",
+    "btn_help":"❓  مساعدة","btn_menu":"🏠  القائمة","btn_cancel":"❌  إلغاء","btn_back":"🔙  رجوع",
+    "btn_free":"💎  طلب مجاني","btn_points":"💰  نقاطي","btn_trial":"🎁  تجربة",
+    "btn_coupon":"🎟  قسيمة",
+    "add_title":"➕","add_guide":"📖 أرسل رقمك.","otp_guide":"📩 الرمز!",
+    "pwd_guide":"🔐 2FA","linked_ok":"✅ <code>{phone}</code>",
+    "phone_used":"❌ الرقم مستخدم",
+    "target_title":"🎯","target_guide":"📖 t.me/...","target_saved":"✅ {link}",
+    "own_title":"🏠","own_guide":"📖 t.me/...","own_saved":"✅ {link}",
+    "my_title":"📊","no_accounts":"❌","submit_title":"📦",
+    "submit_no_acc":"❌","submit_incomplete":"⚠️",
+    "history_title":"📜","history_empty":"❌",
+    "status_pending":"⏳","status_process":"🔄","status_complete":"✅","status_rejected":"❌",
+    "members_title":"👥","members_body":"1={rate}\n{ppm}=1\n📱{accounts}\n💰{points}",
+    "help_title":"❓","help_body":"إحالة→+100\n2=1\n🛎 @{support}",
+    "invalid_link":"❌","invalid_phone":"❌","cancelled":"❌","banned":"🚫","rate_limited":"⏳",
+    "ref_title":"🎁","ref_body":"{link}\n💰{points}\n👥{refs}\n+{reward}",
+    "ref_reward":"🎉+{pts}\n{name}\n💰{total}","new_ref_notice":"👋 +{pts}",
+    "points_title":"💰","points_body":"💰{points}\n{ppm}=1\n👥{members}",
+    "free_title":"💎","free_intro":"📖 رابط الهدف:","free_own":"📖 رابط مجموعتك:",
+    "free_amount":"كم?\n{ppm}/عضو\n💰{points}",
+    "free_no_points":"❌ {points} تحتاج {need}","free_invalid_num":"❌",
+    "free_confirm":"💎{members}\n💰{cost}\n{remaining}\n🎯{target}\n🏠{own}",
+    "free_done":"🎉{members}\n💰{cost}\n{remaining}",
+    "btn_confirm":"✅","btn_edit":"✏️",
+    "ticket_title":"🎫","ticket_guide":"اكتب.","ticket_sent":"✅#{id}",
+    "coupon_prompt":"🎟 /redeem CODE",
+    "owner_msg_status":"📢#{id}: {status}","owner_msg_custom":"📩{msg}",
+},
 }
 
-PREFIX_FALLBACK = [
-    ("92", "PK"), ("44", "GB"), ("91", "IN"), ("880", "BD"),
-    ("62", "ID"), ("60", "MY"), ("65", "SG"), ("852", "HK"),
-    ("90", "TR"), ("48", "PL"), ("380", "UA"), ("40", "RO"),
-    ("31", "NL"), ("32", "BE"), ("41", "CH"), ("43", "AT"),
-    ("46", "SE"), ("47", "NO"), ("45", "DK"), ("358", "FI"),
-    ("353", "IE"), ("351", "PT"), ("30", "GR"), ("27", "ZA"),
-    ("234", "NG"), ("20", "EG"), ("966", "SA"), ("971", "AE"),
-    ("7", "RU"), ("86", "CN"), ("81", "JP"), ("82", "KR"),
-    ("61", "AU"), ("64", "NZ"), ("55", "BR"), ("52", "MX"),
-    ("49", "DE"), ("33", "FR"), ("39", "IT"), ("34", "ES"),
-    ("886", "TW"), ("66", "TH"), ("84", "VN"), ("63", "PH"),
-    ("1", "US"),
-]
+LANG_NAMES = {"en":"🇬🇧 English","ur":"🇵🇰 اردو","hi":"🇮🇳 हिंदी",
+              "roman_ur":"🔤 Roman Urdu","ar":"🇸🇦 العربية"}
 
-APP_LOGOS = {
-    "whatsapp": "\U0001F4F1", "telegram": "\u2708\uFE0F",
-    "instagram": "\U0001F4F8", "facebook": "\U0001F535",
-    "twitter": "\U0001F426", "tiktok": "\U0001F3B5",
-    "snapchat": "\U0001F47B", "discord": "\U0001F3AE",
-    "youtube": "\U0001F4FA", "linkedin": "\U0001F4BC",
-    "google": "\U0001F50D", "gmail": "\U0001F4E7",
-    "microsoft": "\U0001F7EA", "apple": "\U0001F34E",
-    "amazon": "\U0001F4E6", "netflix": "\U0001F3AC",
-    "paypal": "\U0001F4B3", "binance": "\U0001F4B0",
-    "coinbase": "\U0001FA99", "uber": "\U0001F697",
-    "airbnb": "\U0001F3E0", "reddit": "\U0001F47D",
-    "pinterest": "\U0001F4CC", "skype": "\u260E\uFE0F",
-    "zoom": "\U0001F3A5", "signal": "\U0001F512",
-    "viber": "\U0001F4DE", "line": "\U0001F4AC",
-    "wechat": "\U0001F49A", "imo": "\U0001F4F2",
-    "truecaller": "\U0001F4DE", "bank": "\U0001F3E6",
-    "hdfc": "\U0001F3E6", "icici": "\U0001F3E6",
-    "sbi": "\U0001F3E6", "paytm": "\U0001F4B8",
-    "phonepe": "\U0001F4B8", "gpay": "\U0001F4B8",
-    "default": "\U0001F4E9",
-}
+def t(lang, key, **kw):
+    lang = lang if lang in TEXTS else "en"
+    text = TEXTS[lang].get(key, TEXTS["en"].get(key, key))
+    try: return text.format(**kw) if kw else text
+    except Exception: return text
 
-APP_KEYWORDS = [
-    ("whatsapp",  ["whatsapp", "whats app", "wa code", "wa-", "wa otp"]),
-    ("telegram",  ["telegram", "tg code", "tg-", "telegram code"]),
-    ("instagram", ["instagram", "ig code", "ig-", "insta"]),
-    ("facebook",  ["facebook", "fb code", "fb-", "meta"]),
-    ("twitter",   ["twitter", "x code", "tweet"]),
-    ("tiktok",    ["tiktok", "tik tok"]),
-    ("snapchat",  ["snapchat", "snap"]),
-    ("discord",   ["discord"]),
-    ("youtube",   ["youtube", "yt code"]),
-    ("linkedin",  ["linkedin"]),
-    ("google",    ["google", "g-", "gmail"]),
-    ("microsoft", ["microsoft", "outlook", "ms code"]),
-    ("apple",     ["apple", "icloud", "apple id"]),
-    ("amazon",    ["amazon", "amzn"]),
-    ("netflix",   ["netflix"]),
-    ("paypal",    ["paypal"]),
-    ("binance",   ["binance"]),
-    ("coinbase",  ["coinbase"]),
-    ("uber",      ["uber"]),
-    ("airbnb",    ["airbnb"]),
-    ("reddit",    ["reddit"]),
-    ("pinterest", ["pinterest"]),
-    ("skype",     ["skype"]),
-    ("zoom",      ["zoom"]),
-    ("signal",    ["signal"]),
-    ("viber",     ["viber"]),
-    ("line",      ["line app", "line code"]),
-    ("wechat",    ["wechat", "we chat"]),
-    ("imo",       ["imo app", "imo code"]),
-    ("truecaller", ["truecaller"]),
-    ("paytm",     ["paytm"]),
-    ("phonepe",   ["phonepe", "phone pe"]),
-    ("gpay",      ["google pay", "gpay"]),
-    ("hdfc",      ["hdfc"]),
-    ("icici",     ["icici"]),
-    ("sbi",       ["sbi ", "sbi-", "state bank"]),
-    ("bank",      ["bank", "otp for transaction", "transaction"]),
-]
+# ==========================================================
+#                    💾 DATABASE
+# ==========================================================
+conn = sqlite3.connect("data.db", check_same_thread=False)
+conn.executescript("""
+CREATE TABLE IF NOT EXISTS users(
+    user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
+    lang TEXT, banned INTEGER DEFAULT 0, joined_at TEXT,
+    referred_by INTEGER DEFAULT NULL, referral_rewarded INTEGER DEFAULT 0,
+    points INTEGER DEFAULT 0, ref_count INTEGER DEFAULT 0,
+    is_vip INTEGER DEFAULT 0, vip_until TEXT
+);
+CREATE TABLE IF NOT EXISTS accounts(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
+    phone TEXT UNIQUE, session_enc BLOB,
+    target_link TEXT, own_link TEXT, created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS orders(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
+    accounts INTEGER, members INTEGER, order_type TEXT DEFAULT 'paid',
+    points_used INTEGER DEFAULT 0, is_trial INTEGER DEFAULT 0,
+    priority INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
+    note TEXT, created_at TEXT, updated_at TEXT
+);
+CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS tickets(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, message TEXT,
+    reply TEXT, status TEXT DEFAULT 'open', created_at TEXT, replied_at TEXT
+);
+CREATE TABLE IF NOT EXISTS logs(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER, action TEXT, detail TEXT, created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS owners(
+    user_id INTEGER PRIMARY KEY, role TEXT DEFAULT 'helper',
+    added_at TEXT, added_by INTEGER
+);
+CREATE TABLE IF NOT EXISTS coupons(
+    code TEXT PRIMARY KEY, points INTEGER,
+    max_uses INTEGER DEFAULT 1, uses INTEGER DEFAULT 0,
+    expires_at TEXT, created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS coupon_uses(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT, user_id INTEGER, used_at TEXT
+);
+CREATE TABLE IF NOT EXISTS trial_used(
+    user_id INTEGER PRIMARY KEY, used_at TEXT
+);
+""")
+conn.commit()
 
-SIM_OPERATORS = {
-    "9230": ("Jazz", E_GREEN), "9231": ("Jazz", E_GREEN),
-    "9232": ("Warid/Jazz", E_GREEN), "9233": ("Ufone", E_YELLOW),
-    "9234": ("Telenor", E_BLUE), "9235": ("Telenor", E_BLUE),
-    "9236": ("Jazz", E_GREEN),
-    "919": ("Airtel/Vi", E_RED), "918": ("Airtel", E_RED), "917": ("Idea", E_YELLOW),
-    "447": ("UK Mobile", E_BLUE),
-    "9715": ("Etisalat", E_GREEN), "97150": ("Etisalat", E_GREEN), "97155": ("du", E_RED),
-    "9665": ("STC/Mobily", E_GREEN),
-    "8801": ("Grameenphone", E_RED),
-    "1": ("US Carrier", E_BLUE),
-}
+# migrations
+for sql in [
+    "ALTER TABLE users ADD COLUMN referred_by INTEGER DEFAULT NULL",
+    "ALTER TABLE users ADD COLUMN referral_rewarded INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN points INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN ref_count INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN is_vip INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN vip_until TEXT",
+    "ALTER TABLE orders ADD COLUMN is_trial INTEGER DEFAULT 0",
+    "ALTER TABLE orders ADD COLUMN priority INTEGER DEFAULT 0",
+]:
+    try: conn.execute(sql); conn.commit()
+    except sqlite3.OperationalError: pass
 
-
-# ═══════════════════════════════════════════════════════
-# HELPERS
-# ═══════════════════════════════════════════════════════
-
-def escape_html(text):
-    if text is None:
-        return ""
-    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-
-def mask_number(number):
-    if not number:
-        return "Unknown"
-    n = re.sub(r"\D", "", str(number))
-    if len(n) > 7:
-        return n[:3] + "\u2022\u2022\u2022" + n[-4:]
-    return n or "Unknown"
-
-
-def detect_country_code(value):
-    if not value:
-        return "UNKNOWN"
-    clean = re.sub(r"\D", "", str(value))
-    if not clean:
-        return "UNKNOWN"
-    for region in (None, "PK", "US", "GB", "IN", "AE", "SA"):
+# ---------- DB Helpers ----------
+def now_str(): return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+def get_setting(k, d=None):
+    r = conn.execute("SELECT value FROM settings WHERE key=?",(k,)).fetchone()
+    return r[0] if r else d
+def set_setting(k, v):
+    conn.execute("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)",(k,v)); conn.commit()
+def get_lang(uid):
+    r = conn.execute("SELECT lang FROM users WHERE user_id=?",(uid,)).fetchone()
+    return (r[0] if r and r[0] else "en")
+def set_lang(uid, lg):
+    conn.execute("UPDATE users SET lang=? WHERE user_id=?",(lg,uid)); conn.commit()
+def is_banned(uid):
+    r = conn.execute("SELECT banned FROM users WHERE user_id=?",(uid,)).fetchone()
+    return bool(r and r[0])
+def log_action(uid, a, d=""):
+    conn.execute("INSERT INTO logs(user_id,action,detail,created_at) VALUES(?,?,?,?)",
+                 (uid,a,d,now_str())); conn.commit()
+def members_per_account():
+    try: return int(get_setting("members_per_account", DEFAULT_MEMBERS_PER_ACC))
+    except Exception: return DEFAULT_MEMBERS_PER_ACC
+def get_points(uid):
+    r = conn.execute("SELECT points FROM users WHERE user_id=?",(uid,)).fetchone()
+    return int(r[0]) if r and r[0] else 0
+def add_points(uid, n):
+    conn.execute("UPDATE users SET points=points+? WHERE user_id=?",(n,uid)); conn.commit()
+def get_ref_count(uid):
+    r = conn.execute("SELECT ref_count FROM users WHERE user_id=?",(uid,)).fetchone()
+    return int(r[0]) if r and r[0] else 0
+def is_vip(uid):
+    r = conn.execute("SELECT is_vip,vip_until FROM users WHERE user_id=?",(uid,)).fetchone()
+    if not r or not r[0]: return False
+    if r[1]:
         try:
-            parsed = phonenumbers.parse(clean, region)
-            if phonenumbers.is_valid_number(parsed):
-                r = phonenumbers.region_code_for_number(parsed)
-                if r:
-                    return r
-        except Exception:
-            continue
-    for prefix, code in PREFIX_FALLBACK:
-        if clean.startswith(prefix):
-            return code
-    return "UNKNOWN"
+            if datetime.datetime.strptime(r[1], "%Y-%m-%d") < datetime.datetime.now():
+                conn.execute("UPDATE users SET is_vip=0 WHERE user_id=?",(uid,))
+                conn.commit(); return False
+        except Exception: pass
+    return True
+def trial_available(uid):
+    if not TRIAL_ENABLED: return False
+    r = conn.execute("SELECT user_id FROM trial_used WHERE user_id=?",(uid,)).fetchone()
+    return r is None
+def status_label(lg, st):
+    return {"pending":t(lg,"status_pending"),"process":t(lg,"status_process"),
+            "complete":t(lg,"status_complete"),"rejected":t(lg,"status_rejected")}.get(st,st)
 
+def is_owner(uid): return uid in OWNER_IDS
+def is_helper(uid): return uid in HELPERS or is_owner(uid)
 
-def country_info(value):
-    code = detect_country_code(value)
-    flag, name = COUNTRIES.get(code, (E_GLOBE, "Unknown"))
-    return flag, name, code
-
-
-def detect_sim_operator(number):
-    if not number:
-        return None, None
-    clean = re.sub(r"\D", "", str(number))
-    for prefix in sorted(SIM_OPERATORS.keys(), key=len, reverse=True):
-        if clean.startswith(prefix):
-            return SIM_OPERATORS[prefix]
-    return None, None
-
-
-def detect_app(message_text):
-    if not message_text:
-        return "unknown", APP_LOGOS["default"]
-    low = message_text.lower()
-    for app_name, keywords in APP_KEYWORDS:
-        for kw in keywords:
-            if kw in low:
-                return app_name, APP_LOGOS.get(app_name, APP_LOGOS["default"])
-    return "unknown", APP_LOGOS["default"]
-
-
-def extract_otp(message_text):
-    """Returns (otp, confidence, category)"""
-    if not message_text:
-        return "N/A", "LOW", "NONE"
-
-    m = re.search(r"(?<!\d)(\d{3,4}[\s\-]\d{3,4})(?!\d)", message_text)
-    if m:
-        raw = m.group(1)
-        clean = re.sub(r"\s+", "-", raw)
-        return clean, "HIGH", "CODE"
-
-    high_patterns = [
-        (r"(?:otp|o\.t\.p)[^\d]{0,15}(\d{3,9})", "OTP"),
-        (r"(?:verification code|verify code)[^\d]{0,15}(\d{3,9})", "CODE"),
-        (r"(?:login code|security code)[^\d]{0,15}(\d{3,9})", "CODE"),
-        (r"(?:your code is|code:)[^\d]{0,15}(\d{3,9})", "CODE"),
-        (r"(?:one[-\s]?time[-\s]?password)[^\d]{0,15}(\d{3,9})", "OTP"),
-        (r"(?:use code)[^\d]{0,15}(\d{3,9})", "CODE"),
-    ]
-    for pattern, cat in high_patterns:
-        m = re.search(pattern, message_text, re.IGNORECASE)
-        if m:
-            return m.group(1), "HIGH", cat
-
-    medium_patterns = [
-        (r"(?:کوڈ|پاس کوڈ)[^\d]{0,15}(\d{3,9})", "CODE"),
-        (r"(?:कोड|ओटीपी|पिन)[^\d]{0,15}(\d{3,9})", "OTP"),
-        (r"(?:رمز|كود)[^\d]{0,15}(\d{3,9})", "CODE"),
-        (r"(?:কোড|ওটিপি)[^\d]{0,15}(\d{3,9})", "OTP"),
-        (r"(?:kode|verifikasi)[^\d]{0,15}(\d{3,9})", "CODE"),
-        (r"(?:kod|şifre)[^\d]{0,15}(\d{3,9})", "CODE"),
-        (r"(?:code|vérification)[^\d]{0,15}(\d{3,9})", "CODE"),
-        (r"(?:pin)[^\d]{0,15}(\d{3,9})", "PIN"),
-        (r"(?:password)[^\d]{0,15}(\d{3,9})", "PIN"),
-    ]
-    for pattern, cat in medium_patterns:
-        m = re.search(pattern, message_text, re.IGNORECASE)
-        if m:
-            return m.group(1), "MEDIUM", cat
-
-    m = re.search(r"(?<!\d)(\d{4,8})(?!\d)", message_text)
-    if m:
-        return m.group(1), "LOW", "CODE"
-
-    m = re.search(r"(?<!\d)(\d{3,9})(?!\d)", message_text)
-    if m:
-        return m.group(1), "LOW", "CODE"
-
-    return "N/A", "LOW", "NONE"
-
-
-def message_category(message_text):
-    if not message_text:
-        return []
-    low = message_text.lower()
-    tags = []
-    if any(w in low for w in ["otp", "verification", "verify", "one-time"]):
-        tags.append("OTP")
-    if any(w in low for w in ["bank", "transaction", "debit", "credit", "account"]):
-        tags.append("Banking")
-    if any(w in low for w in ["login", "sign in", "sign-in"]):
-        tags.append("Login")
-    if any(w in low for w in ["payment", "paid", "purchase", "order"]):
-        tags.append("Payment")
-    if any(w in low for w in ["delivery", "shipped", "courier"]):
-        tags.append("Delivery")
-    if any(w in low for w in ["password", "reset", "recover"]):
-        tags.append("Password")
-    if any(w in low for w in ["offer", "discount", "sale", "promo"]):
-        tags.append("Promo")
-    return tags
-
-
-def relative_time(dt_str):
+def load_owners():
     try:
-        dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
-        now = datetime.utcnow()
-        diff = (now - dt).total_seconds()
-        if diff < 60:
-            return "just now"
-        if diff < 3600:
-            return str(int(diff // 60)) + " min ago"
-        if diff < 86400:
-            return str(int(diff // 3600)) + " hour ago"
-        return str(int(diff // 86400)) + " day ago"
-    except Exception:
-        return ""
+        for uid, role in conn.execute("SELECT user_id,role FROM owners").fetchall():
+            if role == "owner" and uid not in OWNER_IDS: OWNER_IDS.append(uid)
+            elif role == "helper" and uid not in HELPERS: HELPERS.append(uid)
+    except Exception: pass
 
+# ==========================================================
+#                    FSM
+# ==========================================================
+class AddAcc(StatesGroup):
+    phone=State(); otp=State(); password=State()
+class SetLinks(StatesGroup):
+    target=State(); own=State()
+class FreeOrder(StatesGroup):
+    target=State(); own=State(); amount=State(); confirm=State()
+class AdminFlow(StatesGroup):
+    broadcast=State(); find_user=State(); msg_user=State(); status_note=State()
+    add_owner=State(); add_coupon=State()
+class TicketFlow(StatesGroup):
+    message=State(); reply=State()
 
-def pkt_time():
-    return (datetime.utcnow() + timedelta(hours=PKT_OFFSET_HOURS)).strftime("%H:%M:%S")
-
-
-def generate_sms_id(message):
-    dt = str(message.get("dt", ""))
-    num = str(message.get("num", ""))
-    cli = str(message.get("cli", ""))
-    msg = str(message.get("message", ""))
-    content_hash = hashlib.md5((cli + ":" + msg).encode()).hexdigest()[:8]
-    return dt + "_" + num + "_" + content_hash
-
-
-def is_owner(user_id):
+# ==========================================================
+#                    🎬 ANIMATION HELPERS
+# ==========================================================
+async def animate_msg(chat_id, template, frames=5, delay=0.6,
+                      reply_markup=None, final_text=None):
     try:
-        return int(user_id) == int(TELEGRAM_OWNER_ID)
-    except (TypeError, ValueError):
-        return False
+        msg = await bot.send_message(chat_id, template.format(f=SPINNER[0]))
+    except Exception: return None
+    for i in range(1, frames):
+        await asyncio.sleep(delay)
+        try:
+            await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
+                text=template.format(f=SPINNER[i % len(SPINNER)]),
+                reply_markup=reply_markup if i == frames-1 else None)
+        except Exception: break
+    if final_text:
+        try:
+            await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
+                text=final_text, reply_markup=reply_markup)
+        except Exception: pass
+    return msg
 
+async def animate_edit(call: types.CallbackQuery, template, frames=5, delay=0.5,
+                       final_text=None, reply_markup=None):
+    try: await call.message.edit_text(template.format(f=SPINNER[0]))
+    except Exception: return
+    for i in range(1, frames):
+        await asyncio.sleep(delay)
+        try:
+            await call.message.edit_text(template.format(f=SPINNER[i % len(SPINNER)]))
+        except Exception: break
+    if final_text:
+        try: await call.message.edit_text(final_text, reply_markup=reply_markup)
+        except Exception: pass
 
-# ═══════════════════════════════════════════════════════
-# PREMIUM SMS CARD
-# ═══════════════════════════════════════════════════════
+def progress_bar(pct):
+    pct = max(0, min(100, pct))
+    return f"[{PROGRESS[int(pct/10)]}] {pct}%"
 
-def sms_text(message, masked=True):
-    number = str(message.get("num", ""))
-    text = str(message.get("message", ""))
-    dt = str(message.get("dt", ""))
+def get_welcome(lg, name):
+    return TEXTS.get(lg, TEXTS["en"]).get("welcome", WELCOME_EN).format(name=name)
 
-    app_name, app_logo = detect_app(text)
-    flag, country_name, country_code = country_info(number)
-    sim_name, sim_dot = detect_sim_operator(number)
-    otp, confidence, otp_cat = extract_otp(text)
-    tags = message_category(text)
-    rel_time = relative_time(dt) if dt else ""
-
-    display_number = mask_number(number) if masked else (number or "Unknown")
-
-    lines = []
-    lines.append(E_SPARKLE + " " + E_BELL + " <b>N E W   M E S S A G E</b> " + E_BELL + " " + E_SPARKLE)
-    lines.append(DIV_SHORT)
-
-    if app_name != "unknown":
-        app_line = app_logo + " <b>" + app_name.upper() + "</b>"
-    else:
-        app_line = E_MSG + " <b>SMS</b>"
-    app_line += "  " + DOT + "  " + flag + " " + country_name
-    lines.append(app_line)
-
-    if otp != "N/A":
-        conf_icon = E_GREEN if confidence == "HIGH" else (E_YELLOW if confidence == "MEDIUM" else E_RED)
-        lines.append(DIV_SHORT)
-        lines.append(E_KEY + " <b>" + otp_cat + " :</b>  <code>" + escape_html(otp) + "</code>  " + conf_icon)
-        lines.append(DIV_SHORT)
-
-    num_line = E_BOLT + " <code>" + escape_html(display_number) + "</code>"
-    if sim_name:
-        num_line += "  " + (sim_dot or E_SIGNAL) + " " + sim_name
-    lines.append(num_line)
-
-    time_parts = []
-    if rel_time:
-        time_parts.append(E_CLOCK + " " + rel_time)
-    time_parts.append(E_TIME + " " + pkt_time() + " PKT")
-    lines.append("  " + DOT + "  ".join(time_parts))
-
-    if tags:
-        tag_str = " ".join(["#" + t for t in tags])
-        lines.append(E_TAG + " <i>" + tag_str + "</i>")
-
-    lines.append(E_DIAMOND + " <i>RN OTP Premium</i> " + E_DIAMOND)
-    return "\n".join(lines)
-
-
-def message_buttons(message_text, sms_id, fallback=False):
-    """Buttons — accessible by EVERYONE in the group"""
-    otp, _, _ = extract_otp(message_text)
-    keyboard = []
-
-    row1 = []
-    if otp != "N/A":
-        if fallback:
-            row1.append({
-                "text": E_CLIP + " Copy OTP: " + otp,
-                "callback_data": "otp:" + otp
-            })
-        else:
-            row1.append({
-                "text": E_CLIP + " Copy OTP: " + otp,
-                "copy_text": {"text": otp}
-            })
-    else:
-        row1.append({
-            "text": E_CROSS + " No OTP Found",
-            "callback_data": "otp:none"
-        })
-    keyboard.append(row1)
-
-    row2 = [{"text": E_EYES + " Full Message", "callback_data": "full:" + sms_id}]
-    if TELEGRAM_CHANNEL_URL:
-        row2.append({"text": E_MEGA + " Channel", "url": TELEGRAM_CHANNEL_URL})
-    keyboard.append(row2)
-
-    clean_username = BUTTON_BOT_USERNAME.lstrip("@")
-    keyboard.append([
-        {"text": E_ROCKET + " Open Bot", "url": "https://t.me/" + clean_username}
+# ==========================================================
+#                    🎨 KEYBOARDS
+# ==========================================================
+def lang_kb():
+    return IKM(inline_keyboard=[
+        [IKB(text="🇬🇧  English",        callback_data="setlang:en")],
+        [IKB(text="🇵🇰  اردو",            callback_data="setlang:ur")],
+        [IKB(text="🇮🇳  हिंदी",           callback_data="setlang:hi")],
+        [IKB(text="🔤  Roman Urdu",      callback_data="setlang:roman_ur")],
+        [IKB(text="🇸🇦  العربية",         callback_data="setlang:ar")],
     ])
 
-    return {"inline_keyboard": keyboard}
+def user_menu(lang, uid=None):
+    rows = [
+        [IKB(text=t(lang,"btn_lang"), callback_data="change_lang")],
+        [IKB(text=t(lang,"btn_add"),    callback_data="add_acc")],
+        [IKB(text=t(lang,"btn_my"),     callback_data="my_accs")],
+        [IKB(text=t(lang,"btn_submit"), callback_data="submit")],
+        [IKB(text=t(lang,"btn_free"),   callback_data="free_order")],
+    ]
+    if uid and trial_available(uid):
+        rows.append([IKB(text=t(lang,"btn_trial"), callback_data="free_trial")])
+    rows.extend([
+        [IKB(text=t(lang,"btn_points"), callback_data="my_points"),
+         IKB(text=t(lang,"btn_refer"),  callback_data="referral")],
+        [IKB(text=t(lang,"btn_coupon"), callback_data="redeem_prompt")],
+        [IKB(text=t(lang,"btn_members"),callback_data="members"),
+         IKB(text=t(lang,"btn_history"),callback_data="history")],
+        [IKB(text=t(lang,"btn_ticket"), callback_data="new_ticket"),
+         IKB(text=t(lang,"btn_support"),url=f"https://t.me/{CUSTOMER_SERVICE}")],
+        [IKB(text=t(lang,"btn_help"),   callback_data="help")],
+    ])
+    return IKM(inline_keyboard=rows)
 
+def cancel_kb(lang):
+    return IKM(inline_keyboard=[[IKB(text=t(lang,"btn_cancel"), callback_data="cancel")]])
 
-def build_full_message_alert(message_text, otp="N/A", app_name="unknown",
-                              country_code="UNKNOWN", number="", dt=""):
-    flag, name = COUNTRIES.get(country_code, (E_GLOBE, country_code))
-    app_logo = APP_LOGOS.get(app_name, APP_LOGOS["default"])
-    rel = relative_time(dt) if dt else ""
+def owner_menu():
+    return IKM(inline_keyboard=[
+        [IKB(text="📦  Orders",         callback_data="o_orders"),
+         IKB(text="📋  Queue",          callback_data="o_queue")],
+        [IKB(text="👥  Users",          callback_data="o_users"),
+         IKB(text="📊  Stats",          callback_data="o_stats")],
+        [IKB(text="📈  Analytics",      callback_data="o_analytics")],
+        [IKB(text="🔑  Sessions",       callback_data="o_sessions")],
+        [IKB(text="✉️  Message User",   callback_data="o_msg_user")],
+        [IKB(text="📢  Broadcast",      callback_data="o_broadcast")],
+        [IKB(text="🔎  Find User",      callback_data="o_find")],
+        [IKB(text="🎫  Tickets",        callback_data="o_tickets")],
+        [IKB(text="🎟  Coupons",        callback_data="o_coupons")],
+        [IKB(text="💾  Backup Now",     callback_data="o_backup")],
+        [IKB(text="📤  Export CSV",     callback_data="o_export")],
+        [IKB(text="⚙️  Settings",       callback_data="o_settings")],
+    ])
 
-    lines = []
-    lines.append(E_SCROLL + " <b>FULL MESSAGE</b> " + E_SCROLL)
-    lines.append(DIVIDER)
+def admin_back_kb():
+    return IKM(inline_keyboard=[[IKB(text="🔙  Admin Panel", callback_data="admin_home")]])
 
-    if app_name != "unknown":
-        lines.append(app_logo + " <b>" + app_name.upper() + "</b>")
-    else:
-        lines.append(E_MSG + " <b>SMS</b>")
+def order_status_kb(oid):
+    return IKM(inline_keyboard=[
+        [IKB(text="⏳  Pending",  callback_data=f"setst:{oid}:pending"),
+         IKB(text="🔄  Process",  callback_data=f"setst:{oid}:process")],
+        [IKB(text="✅  Complete", callback_data=f"setst:{oid}:complete"),
+         IKB(text="❌  Reject",   callback_data=f"setst:{oid}:rejected")],
+        [IKB(text="✉️  Message User", callback_data=f"ordmsg:{oid}")],
+        [IKB(text="🔙  Back",     callback_data="o_orders")],
+    ])
 
-    lines.append(flag + " " + name + "  " + DOT + "  " + E_PHONE + " <code>" + escape_html(number) + "</code>")
+def free_confirm_kb(lang):
+    return IKM(inline_keyboard=[
+        [IKB(text=t(lang,"btn_confirm"), callback_data="free_yes")],
+        [IKB(text=t(lang,"btn_edit"),    callback_data="free_no")],
+    ])
 
-    if rel:
-        lines.append(E_CLOCK + " " + rel + "  " + DOT + "  " + E_TIME + " " + pkt_time() + " PKT")
+def force_join_kb(missing):
+    rows = []
+    for ch in missing:
+        if str(ch).startswith("http"): link, label = ch, ch
+        elif str(ch).startswith("-"):
+            link = f"https://t.me/c/{str(ch)[4:]}/1"; label = ch
+        else:
+            uname = str(ch).lstrip("@")
+            link = f"https://t.me/{uname}"; label = f"@{uname}"
+        rows.append([IKB(text=f"📢  Join {label}", url=link)])
+    rows.append([IKB(text="✅  I Have Joined — Verify", callback_data="verify_join")])
+    return IKM(inline_keyboard=rows)
 
-    if otp != "N/A":
-        lines.append(DIVIDER)
-        lines.append(E_KEY + " <b>OTP:</b> <code>" + escape_html(otp) + "</code>")
+# ==========================================================
+#                    HELPERS
+# ==========================================================
+async def report_owner(text):
+    if not OWNER_GROUP_ID: return
+    try: await bot.send_message(OWNER_GROUP_ID, text)
+    except Exception as e: logging.warning(f"report_owner: {e}")
 
-    lines.append(DIVIDER)
-    lines.append(E_MSG + " <b>Message:</b>")
-    lines.append("")
-    lines.append(escape_html(message_text))
-    lines.append("")
-    lines.append(E_DIAMOND + " <i>RN OTP Premium</i> " + E_DIAMOND)
+def user_tag(u): return f"@{u.username}" if u.username else f"<code>{u.id}</code>"
 
-    return "\n".join(lines)
+async def check_force_join(uid):
+    if not FORCE_CHANNELS: return []
+    missing = []
+    for ch in FORCE_CHANNELS:
+        try:
+            m = await bot.get_chat_member(ch, uid)
+            if m.status in ("left","kicked"): missing.append(ch)
+        except Exception: missing.append(ch)
+    return missing
 
+def save_referral_on_start(new_uid, ref_uid):
+    if new_uid == ref_uid: return
+    ex = conn.execute("SELECT referred_by FROM users WHERE user_id=?",(new_uid,)).fetchone()
+    if ex and ex[0]: return
+    conn.execute("UPDATE users SET referred_by=? WHERE user_id=?",(ref_uid,new_uid))
+    conn.commit()
 
-# ═══════════════════════════════════════════════════════
-# DATABASE
-# ═══════════════════════════════════════════════════════
+def reward_referrer_if_due(uid):
+    u = conn.execute("SELECT referred_by,referral_rewarded FROM users WHERE user_id=?",
+                     (uid,)).fetchone()
+    if not u or not u[0]: return None
+    ref_uid, already = u
+    if already: return None
+    cnt = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?",(uid,)).fetchone()[0]
+    if cnt < 1: return None
+    add_points(ref_uid, REFERRAL_POINTS)
+    conn.execute("UPDATE users SET ref_count=ref_count+1 WHERE user_id=?",(ref_uid,))
+    conn.execute("UPDATE users SET referral_rewarded=1 WHERE user_id=?",(uid,))
+    conn.commit()
+    log_action(ref_uid, "referral_paid", f"new={uid} +{REFERRAL_POINTS}")
+    return ref_uid
 
-async def init_db():
-    conn = await aiosqlite.connect(DATABASE_FILE)
-    conn.row_factory = aiosqlite.Row
-    await conn.execute(
-        "CREATE TABLE IF NOT EXISTS forwarded_messages ("
-        "sms_id TEXT PRIMARY KEY, claimed_at TEXT NOT NULL, sent_at TEXT, "
-        "raw_num TEXT, cli TEXT, message_text TEXT, payout TEXT, dt TEXT, "
-        "app TEXT, country TEXT, otp TEXT)"
-    )
-    await conn.execute("CREATE INDEX IF NOT EXISTS idx_sent_at ON forwarded_messages(sent_at)")
-    await conn.execute(
-        "CREATE TABLE IF NOT EXISTS bot_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
-    )
-    await conn.execute(
-        "CREATE TABLE IF NOT EXISTS api_keys ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT, api_key TEXT UNIQUE NOT NULL, "
-        "is_active BOOLEAN DEFAULT 1, added_at TEXT NOT NULL)"
-    )
-    await conn.execute(
-        "CREATE TABLE IF NOT EXISTS intruders ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, username TEXT, "
-        "first_name TEXT, action TEXT, seen_at TEXT)"
-    )
-    await conn.execute(
-        "CREATE TABLE IF NOT EXISTS blocked_users ("
-        "user_id TEXT PRIMARY KEY, username TEXT, blocked_at TEXT)"
-    )
-    await conn.commit()
-    return conn
+# ==========================================================
+#                    🛡 ANTI-FLOOD MIDDLEWARE
+# ==========================================================
+class AntiFloodMiddleware(BaseMiddleware):
+    async def __call__(self, handler, event, data):
+        uid = None
+        if hasattr(event, "from_user") and event.from_user:
+            uid = event.from_user.id
+        if not uid or is_helper(uid):
+            return await handler(event, data)
 
+        mute_until = FLOOD_MUTED.get(uid, 0)
+        if time.time() < mute_until:
+            left = int(mute_until - time.time())
+            if isinstance(event, types.Message):
+                try: await event.answer(f"🚫 <b>Slow down!</b>\n⏱ Wait <b>{left}s</b>")
+                except Exception: pass
+            return
 
-async def state_value(conn, key, default=""):
-    async with conn.execute("SELECT value FROM bot_state WHERE key = ?", (key,)) as c:
-        row = await c.fetchone()
-        return str(row["value"]) if row else default
+        now = time.time()
+        FLOOD_CACHE.setdefault(uid, [])
+        FLOOD_CACHE[uid] = [x for x in FLOOD_CACHE[uid] if now - x < FLOOD_WINDOW]
+        FLOOD_CACHE[uid].append(now)
 
+        if len(FLOOD_CACHE[uid]) > FLOOD_LIMIT:
+            FLOOD_MUTED[uid] = now + FLOOD_MUTE_TIME
+            FLOOD_CACHE[uid] = []
+            for oid in OWNER_IDS:
+                try:
+                    await bot.send_message(oid,
+                        f"⚠️ <b>FLOOD</b>\n👤 <code>{uid}</code>\n🔇 Muted {FLOOD_MUTE_TIME}s")
+                except Exception: pass
+            if isinstance(event, types.Message):
+                try: await event.answer("🚫 <b>Too fast!</b>\n🔇 Muted 5 min.")
+                except Exception: pass
+            return
+        return await handler(event, data)
 
-async def set_state(conn, key, value):
-    await conn.execute(
-        "INSERT INTO bot_state(key, value) VALUES (?, ?) "
-        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        (key, value),
-    )
-    await conn.commit()
+dp.message.middleware(AntiFloodMiddleware())
+dp.callback_query.middleware(AntiFloodMiddleware())
 
+# ==========================================================
+#                    🏁 /start
+# ==========================================================
+@dp.message(Command("start"))
+async def cmd_start(m: types.Message, state: FSMContext):
+    await state.clear()
+    if is_banned(m.from_user.id):
+        await m.answer(t(get_lang(m.from_user.id), "banned")); return
 
-async def save_message_data(conn, sms_id, raw_num, cli, message_text,
-                            payout, dt, app, country, otp):
-    now = datetime.now(timezone.utc).isoformat()
-    await conn.execute(
-        "INSERT INTO forwarded_messages("
-        "sms_id, claimed_at, raw_num, cli, message_text, payout, dt, app, country, otp) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-        "ON CONFLICT(sms_id) DO UPDATE SET "
-        "raw_num=excluded.raw_num, cli=excluded.cli, message_text=excluded.message_text, "
-        "payout=excluded.payout, dt=excluded.dt, app=excluded.app, "
-        "country=excluded.country, otp=excluded.otp",
-        (sms_id, now, raw_num, cli, message_text, payout, dt, app, country, otp),
-    )
-    await conn.commit()
+    conn.execute("INSERT OR IGNORE INTO users(user_id,username,first_name,joined_at) "
+                 "VALUES(?,?,?,?)",
+                 (m.from_user.id, m.from_user.username or "",
+                  m.from_user.first_name or "", now_str()))
+    conn.commit()
 
+    parts = (m.text or "").split()
+    ref_saved = None
+    if len(parts) > 1 and parts[1].startswith("ref_"):
+        try:
+            ref_uid = int(parts[1][4:])
+            save_referral_on_start(m.from_user.id, ref_uid)
+            ref_saved = ref_uid
+        except Exception: pass
 
-async def claim_message(conn, sms_id):
-    async with conn.execute(
-        "SELECT sent_at FROM forwarded_messages WHERE sms_id = ?", (sms_id,)
-    ) as c:
-        existing = await c.fetchone()
-    if existing and existing["sent_at"] is not None:
-        return False
-    if existing:
-        return True
-    await conn.execute(
-        "INSERT OR IGNORE INTO forwarded_messages(sms_id, claimed_at) VALUES (?, ?)",
-        (sms_id, datetime.now(timezone.utc).isoformat()),
-    )
-    await conn.commit()
-    async with conn.execute(
-        "SELECT 1 FROM forwarded_messages WHERE sms_id = ?", (sms_id,)
-    ) as c:
-        row = await c.fetchone()
-        return row is not None
+    missing = await check_force_join(m.from_user.id)
+    if missing:
+        await m.answer("🔒 <b>𝐉𝐎𝐈𝐍 𝐑𝐄𝐐𝐔𝐈𝐑𝐄𝐃</b>\n"
+                       "━━━━━━━━━━━━━━━━━━━━\n\n"
+                       "📢 Join the channel below, then tap ✅",
+                       reply_markup=force_join_kb(missing))
+        return
 
+    row = conn.execute("SELECT lang FROM users WHERE user_id=?",(m.from_user.id,)).fetchone()
+    if not row or not row[0]:
+        await m.answer(t("en","choose_language"), reply_markup=lang_kb()); return
 
-async def mark_sent(conn, sms_id):
-    await conn.execute(
-        "UPDATE forwarded_messages SET sent_at = ? WHERE sms_id = ?",
-        (datetime.now(timezone.utc).isoformat(), sms_id),
-    )
-    await conn.commit()
+    lg = row[0]
+    welcome = get_welcome(lg, m.from_user.first_name)
+    await animate_msg(m.chat.id,
+        "✨ <b>Loading menu</b> {f}",
+        frames=5, delay=0.5,
+        final_text=welcome + "\n\n" + t(lg,"menu_title"),
+        reply_markup=user_menu(lg, uid=m.from_user.id))
 
+    if ref_saved:
+        try: await m.answer(t(lg,"new_ref_notice", pts=REFERRAL_POINTS))
+        except Exception: pass
 
-async def get_message_data(conn, sms_id):
-    async with conn.execute(
-        "SELECT raw_num, cli, message_text, payout, dt, app, country, otp "
-        "FROM forwarded_messages WHERE sms_id = ?", (sms_id,)
-    ) as c:
-        row = await c.fetchone()
-    if not row:
-        return None
-    return {
-        "raw_num": row["raw_num"] or "N/A",
-        "cli": row["cli"] or "N/A",
-        "message_text": row["message_text"] or "N/A",
-        "payout": row["payout"] or "0",
-        "dt": row["dt"] or "N/A",
-        "app": row["app"] or "unknown",
-        "country": row["country"] or "UNKNOWN",
-        "otp": row["otp"] or "N/A",
-    }
+@dp.callback_query(F.data == "verify_join")
+async def verify_join(c: types.CallbackQuery):
+    missing = await check_force_join(c.from_user.id)
+    if missing:
+        await c.answer("❌ Join all channels first!", show_alert=True); return
+    row = conn.execute("SELECT lang FROM users WHERE user_id=?",(c.from_user.id,)).fetchone()
+    if not row or not row[0]:
+        await c.message.edit_text("✅ <b>Verified!</b>\n\n" + t("en","choose_language"),
+                                  reply_markup=lang_kb())
+        await c.answer("✅"); return
+    lg = row[0]
+    welcome = get_welcome(lg, c.from_user.first_name)
+    await animate_edit(c,
+        "✨ <b>Verified! Loading</b> {f}",
+        frames=5, delay=0.5,
+        final_text=welcome + "\n\n" + t(lg,"menu_title"),
+        reply_markup=user_menu(lg, uid=c.from_user.id))
+    await c.answer("✅")
 
+@dp.callback_query(F.data.startswith("setlang:"))
+async def set_language(c: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    lg = c.data.split(":")[1]
+    if lg not in TEXTS: lg = "en"
+    conn.execute("INSERT OR IGNORE INTO users(user_id,username,first_name,joined_at) "
+                 "VALUES(?,?,?,?)",
+                 (c.from_user.id, c.from_user.username or "",
+                  c.from_user.first_name or "", now_str()))
+    set_lang(c.from_user.id, lg)
+    welcome = get_welcome(lg, c.from_user.first_name)
+    await animate_edit(c,
+        "🌐 <b>Setting language</b> {f}",
+        frames=4, delay=0.4,
+        final_text=t(lg,"language_set") + "\n\n" + welcome + "\n\n" + t(lg,"menu_title"),
+        reply_markup=user_menu(lg, uid=c.from_user.id))
+    await c.answer("✅")
 
-async def cleanup_old_records(conn, days=30):
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    async with conn.execute(
-        "DELETE FROM forwarded_messages WHERE sent_at < ?", (cutoff,)
-    ) as c:
-        deleted = c.rowcount
-    await conn.commit()
-    return deleted
+@dp.callback_query(F.data == "change_lang")
+async def change_lang(c: types.CallbackQuery):
+    await c.message.edit_text(t(get_lang(c.from_user.id),"choose_language"),
+                              reply_markup=lang_kb())
+    await c.answer()
 
+@dp.message(Command("menu"))
+async def cmd_menu(m: types.Message, state: FSMContext):
+    await state.clear()
+    lg = get_lang(m.from_user.id)
+    await m.answer(t(lg,"menu_title"), reply_markup=user_menu(lg, uid=m.from_user.id))
 
-async def get_db_stats(conn):
-    async with conn.execute(
-        "SELECT COUNT(*) AS c FROM forwarded_messages WHERE sent_at IS NOT NULL"
-    ) as c:
-        sent = (await c.fetchone())["c"]
-    async with conn.execute(
-        "SELECT COUNT(*) AS c FROM forwarded_messages WHERE sent_at IS NULL"
-    ) as c:
-        pending = (await c.fetchone())["c"]
-    async with conn.execute("SELECT COUNT(*) AS c FROM forwarded_messages") as c:
-        total = (await c.fetchone())["c"]
-    async with conn.execute(
-        "SELECT COALESCE(app,'unknown') AS app, COUNT(*) AS c "
-        "FROM forwarded_messages WHERE sent_at IS NOT NULL "
-        "GROUP BY COALESCE(app,'unknown') ORDER BY c DESC LIMIT 10"
-    ) as c:
-        by_app = await c.fetchall()
-    return {
-        "sent": sent, "pending": pending, "total": total,
-        "by_app": [dict(r) for r in by_app],
-    }
+@dp.message(Command("lang"))
+async def cmd_lang(m: types.Message):
+    await m.answer(t(get_lang(m.from_user.id),"choose_language"), reply_markup=lang_kb())
 
+@dp.callback_query(F.data == "menu")
+async def cb_menu(c: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    lg = get_lang(c.from_user.id)
+    await c.message.edit_text(t(lg,"menu_title"),
+                              reply_markup=user_menu(lg, uid=c.from_user.id))
+    await c.answer()
 
-# ═══════════════════════════════════════════════════════
-# API KEY MANAGEMENT
-# ═══════════════════════════════════════════════════════
+@dp.callback_query(F.data == "cancel")
+async def cb_cancel(c: types.CallbackQuery, state: FSMContext):
+    cl = CLIENTS.pop(c.from_user.id, None)
+    if cl:
+        try: await cl.disconnect()
+        except Exception: pass
+    await state.clear()
+    lg = get_lang(c.from_user.id)
+    await c.message.edit_text(t(lg,"cancelled"),
+                              reply_markup=user_menu(lg, uid=c.from_user.id))
+    await c.answer()
 
-async def add_api_key(conn, api_key):
+# ==========================================================
+#                    ➕ ADD ACCOUNT
+# ==========================================================
+@dp.callback_query(F.data == "add_acc")
+async def cb_add(c: types.CallbackQuery, state: FSMContext):
+    lg = get_lang(c.from_user.id)
+    if is_banned(c.from_user.id):
+        await c.answer(t(lg,"banned"), show_alert=True); return
+    await state.set_state(AddAcc.phone)
+    await animate_edit(c, "➕ <b>Loading</b> {f}", frames=3, delay=0.35,
+        final_text=f"{t(lg,'add_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n{t(lg,'add_guide')}",
+        reply_markup=cancel_kb(lg))
+    await c.answer()
+
+@dp.message(AddAcc.phone)
+async def acc_phone(m: types.Message, state: FSMContext):
+    lg = get_lang(m.from_user.id)
+    phone = (m.text or "").strip()
+    if not phone.startswith("+") or len(phone) < 8 or not phone[1:].isdigit():
+        await m.answer(t(lg,"invalid_phone")); return
+    exists = conn.execute("SELECT id FROM accounts WHERE phone=?",(phone,)).fetchone()
+    if exists:
+        await m.answer(t(lg,"phone_used", phone=phone)); await state.clear(); return
+
+    msg = await animate_msg(m.chat.id, "📡 <b>Requesting code</b> {f}",
+                            frames=4, delay=0.5,
+                            final_text="⏳ <b>Connecting to Telegram...</b>")
+    client = TelegramClient(StringSession(), API_ID, API_HASH)
     try:
-        await conn.execute(
-            "INSERT INTO api_keys (api_key, added_at) VALUES (?, ?)",
-            (api_key, datetime.now(timezone.utc).isoformat()),
-        )
-        await conn.commit()
-        return True
+        await client.connect()
+        sent = await client.send_code_request(phone)
+    except Exception as e:
+        try: await client.disconnect()
+        except Exception: pass
+        err = str(e)
+        if "FLOOD_WAIT" in err or "Too many" in err:
+            txt = "⚠️ <b>Account Restricted</b>\n\nYe number par limit hai.\n👉 Doosra try karein."
+        elif "BANNED" in err.upper():
+            txt = "🚫 <b>Number Banned</b>\n\n👉 Doosra try karein."
+        else:
+            txt = f"❌ <code>{err[:200]}</code>"
+        try: await msg.edit_text(txt, reply_markup=cancel_kb(lg))
+        except Exception: pass
+        await state.clear(); return
+    CLIENTS[m.from_user.id] = client
+    await state.update_data(phone=phone, phone_code_hash=sent.phone_code_hash)
+    try: await msg.edit_text(t(lg,"otp_guide"), reply_markup=cancel_kb(lg))
+    except Exception: pass
+    await state.set_state(AddAcc.otp)
+
+@dp.message(AddAcc.otp)
+async def acc_otp(m: types.Message, state: FSMContext):
+    lg = get_lang(m.from_user.id)
+    code = (m.text or "").replace(" ","").strip()
+    data = await state.get_data()
+    client = CLIENTS.get(m.from_user.id)
+    if not client: await m.answer("❌ /start"); await state.clear(); return
+    try:
+        await client.sign_in(phone=data["phone"], code=code,
+                             phone_code_hash=data["phone_code_hash"])
+    except SessionPasswordNeededError:
+        await m.answer(t(lg,"pwd_guide"), reply_markup=cancel_kb(lg))
+        await state.set_state(AddAcc.password); return
+    except PhoneCodeInvalidError:
+        await m.answer("❌ Invalid code."); return
+    except Exception as e:
+        await m.answer(f"❌ <code>{str(e)[:200]}</code>"); return
+    await finish_account(m, state, client, data["phone"], lg)
+
+@dp.message(AddAcc.password)
+async def acc_pwd(m: types.Message, state: FSMContext):
+    lg = get_lang(m.from_user.id)
+    data = await state.get_data()
+    client = CLIENTS.get(m.from_user.id)
+    if not client: await m.answer("❌ /start"); await state.clear(); return
+    try: await client.sign_in(password=(m.text or "").strip())
+    except Exception as e:
+        await m.answer(f"❌ <code>{str(e)[:200]}</code>"); return
+    await finish_account(m, state, client, data["phone"], lg)
+
+async def finish_account(m, state, client, phone, lg):
+    exists = conn.execute("SELECT id FROM accounts WHERE phone=?",(phone,)).fetchone()
+    if exists:
+        try: await client.disconnect()
+        except Exception: pass
+        CLIENTS.pop(m.from_user.id, None)
+        await state.clear()
+        await m.answer(t(lg,"phone_used", phone=phone)); return
+
+    session_str = client.session.save()
+    enc = cipher.encrypt(session_str.encode())
+    try:
+        conn.execute("INSERT INTO accounts(user_id,phone,session_enc,created_at) "
+                     "VALUES(?,?,?,?)",
+                     (m.from_user.id, phone, enc, now_str()))
+        conn.commit()
     except sqlite3.IntegrityError:
-        return False
+        try: await client.disconnect()
+        except Exception: pass
+        CLIENTS.pop(m.from_user.id, None)
+        await state.clear()
+        await m.answer(t(lg,"phone_used", phone=phone)); return
 
+    log_action(m.from_user.id, "add_account", phone)
+    try: await client.disconnect()
+    except Exception: pass
+    CLIENTS.pop(m.from_user.id, None)
+    await state.clear()
 
-async def remove_api_key(conn, api_key):
-    async with conn.execute(
-        "DELETE FROM api_keys WHERE api_key = ?", (api_key,)
-    ) as c:
-        deleted = c.rowcount
-    await conn.commit()
-    return deleted > 0
+    ref_uid = reward_referrer_if_due(m.from_user.id)
+    if ref_uid:
+        try:
+            rl = get_lang(ref_uid)
+            total = get_points(ref_uid)
+            await bot.send_message(ref_uid,
+                t(rl,"ref_reward", pts=REFERRAL_POINTS,
+                  name=m.from_user.first_name, total=total))
+        except Exception: pass
 
+    await animate_msg(m.chat.id,
+        "✨ <b>Saving account</b> {f}",
+        frames=4, delay=0.4,
+        final_text=t(lg,"linked_ok", phone=phone),
+        reply_markup=user_menu(lg, uid=m.from_user.id))
 
-async def get_all_api_keys(conn):
-    async with conn.execute(
-        "SELECT api_key, is_active, added_at FROM api_keys ORDER BY id"
-    ) as c:
-        rows = await c.fetchall()
-    return [dict(r) for r in rows]
+# ==========================================================
+#                📊 MY ACCOUNTS + PER-ACCOUNT LINKS
+# ==========================================================
+@dp.callback_query(F.data == "my_accs")
+async def cb_my(c: types.CallbackQuery):
+    lg = get_lang(c.from_user.id)
+    rows = conn.execute("SELECT id,phone,target_link,own_link FROM accounts "
+                        "WHERE user_id=? ORDER BY id",(c.from_user.id,)).fetchall()
+    if not rows:
+        await c.message.edit_text(f"{t(lg,'my_title')}\n\n{t(lg,'no_accounts')}",
+                                  reply_markup=user_menu(lg, uid=c.from_user.id))
+        await c.answer(); return
+    ready = sum(1 for r in rows if r[2])
+    pts = get_points(c.from_user.id)
+    vip = "👑 " if is_vip(c.from_user.id) else ""
+    text = (f"📊 <b>{t(lg,'my_title')}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{vip}📱 Accounts: <b>{len(rows)}</b>  ♾️\n"
+            f"✅ Ready: <b>{ready}</b>\n"
+            f"💰 Points: <b>{pts}</b>\n\n"
+            f"<i>Members aap ke accounts par depend hain.</i>\n\n")
+    kb = []
+    for i, (aid, phone, tgt, own) in enumerate(rows, 1):
+        text += (f"<b>#{i}</b> 📱 <code>{phone}</code>\n"
+                 f"   🎯 {tgt or '<i>—</i>'}\n"
+                 f"   🏠 {own or '<i>—</i>'}\n\n")
+        kb.append([
+            IKB(text=f"{'✅' if tgt else '⚠️'} Target #{i}", callback_data=f"acc_tgt:{aid}"),
+            IKB(text=f"{'✅' if own else '➖'} Own #{i}",    callback_data=f"acc_own:{aid}"),
+        ])
+    kb.append([IKB(text=t(lg,"btn_add"),  callback_data="add_acc")])
+    kb.append([IKB(text=t(lg,"btn_menu"), callback_data="menu")])
+    if len(text) > 4000: text = text[:3990] + "\n<i>...</i>"
+    await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=kb))
+    await c.answer()
 
+@dp.callback_query(F.data.startswith("acc_tgt:"))
+async def cb_acc_tgt(c: types.CallbackQuery, state: FSMContext):
+    lg = get_lang(c.from_user.id)
+    aid = int(c.data.split(":")[1])
+    row = conn.execute("SELECT id,phone FROM accounts WHERE id=? AND user_id=?",
+                       (aid, c.from_user.id)).fetchone()
+    if not row: await c.answer("Not found", show_alert=True); return
+    await state.set_state(SetLinks.target)
+    await state.update_data(acc_id=aid)
+    await c.message.edit_text(
+        f"{t(lg,'target_title')}\n━━━━━━━━━━━━━━━━━━━━\n"
+        f"📱 <code>{row[1]}</code>\n\n{t(lg,'target_guide')}",
+        reply_markup=cancel_kb(lg))
+    await c.answer()
 
-async def load_api_keys(conn):
-    global api_keys, current_api_index, GREEN_SMS_API_KEY
-    keys = await get_all_api_keys(conn)
-    active = [k["api_key"] for k in keys if k["is_active"]]
-    if active:
-        api_keys = active
-        current_api_index = 0
-        GREEN_SMS_API_KEY = api_keys[0]
-        logger.info("Loaded " + str(len(api_keys)) + " API keys from DB")
+@dp.callback_query(F.data.startswith("acc_own:"))
+async def cb_acc_own(c: types.CallbackQuery, state: FSMContext):
+    lg = get_lang(c.from_user.id)
+    aid = int(c.data.split(":")[1])
+    row = conn.execute("SELECT id,phone FROM accounts WHERE id=? AND user_id=?",
+                       (aid, c.from_user.id)).fetchone()
+    if not row: await c.answer("Not found", show_alert=True); return
+    await state.set_state(SetLinks.own)
+    await state.update_data(acc_id=aid)
+    await c.message.edit_text(
+        f"{t(lg,'own_title')}\n━━━━━━━━━━━━━━━━━━━━\n"
+        f"📱 <code>{row[1]}</code>\n\n{t(lg,'own_guide')}",
+        reply_markup=cancel_kb(lg))
+    await c.answer()
+
+@dp.message(SetLinks.target)
+async def save_target(m: types.Message, state: FSMContext):
+    lg = get_lang(m.from_user.id)
+    link = (m.text or "").strip()
+    if "t.me/" not in link: await m.answer(t(lg,"invalid_link")); return
+    data = await state.get_data()
+    aid = data.get("acc_id")
+    if not aid: await m.answer("❌"); await state.clear(); return
+    conn.execute("UPDATE accounts SET target_link=? WHERE id=?",(link, aid)); conn.commit()
+    await state.clear()
+    await m.answer(t(lg,"target_saved",link=link),
+                   reply_markup=user_menu(lg, uid=m.from_user.id))
+
+@dp.message(SetLinks.own)
+async def save_own(m: types.Message, state: FSMContext):
+    lg = get_lang(m.from_user.id)
+    link = (m.text or "").strip()
+    if "t.me/" not in link: await m.answer(t(lg,"invalid_link")); return
+    data = await state.get_data()
+    aid = data.get("acc_id")
+    if not aid: await m.answer("❌"); await state.clear(); return
+    conn.execute("UPDATE accounts SET own_link=? WHERE id=?",(link, aid)); conn.commit()
+    await state.clear()
+    await m.answer(t(lg,"own_saved",link=link),
+                   reply_markup=user_menu(lg, uid=m.from_user.id))
+
+# ==========================================================
+#                📦 SUBMIT PAID ORDER
+# ==========================================================
+@dp.callback_query(F.data == "submit")
+async def cb_submit(c: types.CallbackQuery):
+    lg = get_lang(c.from_user.id)
+    rows = conn.execute("SELECT id,phone,session_enc,target_link,own_link "
+                        "FROM accounts WHERE user_id=? ORDER BY id",
+                        (c.from_user.id,)).fetchall()
+    if not rows:
+        await c.message.edit_text(f"{t(lg,'submit_title')}\n\n{t(lg,'submit_no_acc')}",
+                                  reply_markup=user_menu(lg, uid=c.from_user.id))
+        await c.answer(); return
+
+    missing = [r for r in rows if not r[3]]
+    if missing:
+        text = f"{t(lg,'submit_incomplete')}\n\n"
+        for r in missing: text += f"• 📱 <code>{r[1]}</code>\n"
+        text += f"\n👉 <b>My Accounts</b> mein har account ka target set karein."
+        await c.message.edit_text(text, reply_markup=user_menu(lg, uid=c.from_user.id))
+        await c.answer(); return
+
+    accs = len(rows)
+    rate = members_per_account()
+    members = accs * rate
+    is_v = is_vip(c.from_user.id)
+    priority = 1 if is_v else 0
+
+    await animate_edit(c, "📦 <b>Submitting order</b> {f}", frames=5, delay=0.5)
+
+    conn.execute(
+        "INSERT INTO orders(user_id,accounts,members,order_type,priority,status,"
+        "created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
+        (c.from_user.id, accs, members, "paid", priority, "pending",
+         now_str(), now_str()))
+    conn.commit()
+    oid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    log_action(c.from_user.id, "submit_order", f"order#{oid} accs={accs}")
+
+    if OWNER_GROUP_ID:
+        header = (f"📦 <b>NEW ORDER #{oid}</b>\n"
+                  f"━━━━━━━━━━━━━━━━━━━━\n"
+                  f"👤 {user_tag(c.from_user)}\n"
+                  f"🆔 <code>{c.from_user.id}</code>\n"
+                  f"{'👑 VIP — Priority' if is_v else '📦 Normal'}\n"
+                  f"📱 <b>Accounts:</b> {accs}\n"
+                  f"👥 <b>Members:</b> {members}\n"
+                  f"🕒 {now_str()}")
+        try: await bot.send_message(OWNER_GROUP_ID, header)
+        except Exception as e: logging.warning(f"hdr: {e}")
+
+        for i, (aid, phone, enc, tgt, own) in enumerate(rows, 1):
+            try: sess = cipher.decrypt(enc).decode()
+            except Exception: sess = "❌"
+            acc_msg = (f"🔑 <b>Account #{i}/{accs}</b>  →  <code>{c.from_user.id}</code>\n"
+                       f"━━━━━━━━━━━━━━━━━━━━\n"
+                       f"📱 <code>{phone}</code>\n"
+                       f"🎯 {tgt}\n"
+                       f"🏠 {own or '—'}\n"
+                       f"🗝 <code>{sess}</code>")
+            try: await bot.send_message(OWNER_GROUP_ID, acc_msg)
+            except Exception: pass
+            await asyncio.sleep(0.35)
+
+    delivery = get_setting("delivery_time", DEFAULT_DELIVERY)
+    final = (
+        "🎉 <b>𝐎𝐑𝐃𝐄𝐑 𝐑𝐄𝐂𝐄𝐈𝐕𝐄𝐃</b> 🎉\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📦 Accounts: <b>{accs}</b>\n"
+        f"👥 Members: <i>Your members depend on your linked accounts.</i>\n"
+        f"⏱ Delivery: <b>{delivery}</b>\n"
+        f"📌 Status: <b>{t(lg,'status_pending')}</b>\n\n"
+        f"{progress_bar(0)}\n\n"
+        f"✨ Thank you! 🌟"
+    )
+    await c.message.edit_text(final, reply_markup=IKM(inline_keyboard=[
+        [IKB(text=t(lg,"btn_support"), url=f"https://t.me/{CUSTOMER_SERVICE}")],
+        [IKB(text=t(lg,"btn_history"), callback_data="history")],
+        [IKB(text=t(lg,"btn_menu"),    callback_data="menu")],
+    ]))
+    await c.answer("🎉")
+
+# ==========================================================
+#                💰 POINTS / FREE / TRIAL / COUPON
+# ==========================================================
+@dp.callback_query(F.data == "my_points")
+async def cb_my_points(c: types.CallbackQuery):
+    lg = get_lang(c.from_user.id)
+    pts = get_points(c.from_user.id)
+    members = pts // POINTS_PER_MEMBER
+    await c.message.edit_text(
+        f"{t(lg,'points_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        + t(lg,"points_body", points=pts, ppm=POINTS_PER_MEMBER, members=members),
+        reply_markup=IKM(inline_keyboard=[
+            [IKB(text=t(lg,"btn_free"),   callback_data="free_order")],
+            [IKB(text=t(lg,"btn_refer"),  callback_data="referral")],
+            [IKB(text=t(lg,"btn_menu"),   callback_data="menu")],
+        ]))
+    await c.answer()
+
+@dp.callback_query(F.data == "free_order")
+async def cb_free_order(c: types.CallbackQuery, state: FSMContext):
+    lg = get_lang(c.from_user.id)
+    pts = get_points(c.from_user.id)
+    if pts < POINTS_PER_MEMBER:
+        await c.answer(t(lg,"free_no_points", points=pts, need=POINTS_PER_MEMBER, members=1),
+                       show_alert=True); return
+    await state.set_state(FreeOrder.target)
+    await animate_edit(c, "💎 <b>Loading</b> {f}", frames=3, delay=0.4,
+        final_text=f"{t(lg,'free_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n{t(lg,'free_intro')}",
+        reply_markup=cancel_kb(lg))
+    await c.answer()
+
+@dp.callback_query(F.data == "free_trial")
+async def cb_free_trial(c: types.CallbackQuery, state: FSMContext):
+    lg = get_lang(c.from_user.id)
+    if not trial_available(c.from_user.id):
+        await c.answer("❌ Trial already used!", show_alert=True); return
+    await state.set_state(FreeOrder.target)
+    await state.update_data(trial=True)
+    await animate_edit(c, "🎁 <b>Free Trial</b> {f}", frames=4, delay=0.5,
+        final_text=(
+            "🎁 <b>𝐅𝐑𝐄𝐄 𝐓𝐑𝐈𝐀𝐋</b> 🎁\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"✨ You get <b>{TRIAL_MEMBERS} members FREE</b>!\n\n"
+            f"📖 Send your <b>target group link</b>:"
+        ),
+        reply_markup=cancel_kb(lg))
+    await c.answer("🎁")
+
+@dp.message(FreeOrder.target)
+async def free_target(m: types.Message, state: FSMContext):
+    lg = get_lang(m.from_user.id)
+    link = (m.text or "").strip()
+    if "t.me/" not in link: await m.answer(t(lg,"invalid_link")); return
+    data = await state.get_data()
+    await state.update_data(target=link)
+    await state.set_state(FreeOrder.own)
+    if data.get("trial"):
+        await m.answer("✅ Saved!\n\n📖 Now send your <b>own group link</b>:",
+                       reply_markup=cancel_kb(lg))
     else:
-        api_keys = [GREEN_SMS_API_KEY]
-        current_api_index = 0
-        logger.info("Using hardcoded API key")
-    return api_keys
+        await m.answer(t(lg,"free_own"), reply_markup=cancel_kb(lg))
 
+@dp.message(FreeOrder.own)
+async def free_own(m: types.Message, state: FSMContext):
+    lg = get_lang(m.from_user.id)
+    link = (m.text or "").strip()
+    if "t.me/" not in link: await m.answer(t(lg,"invalid_link")); return
+    data = await state.get_data()
+    await state.update_data(own=link)
+    if data.get("trial"):
+        await state.update_data(members=TRIAL_MEMBERS, cost=0)
+        await state.set_state(FreeOrder.confirm)
+        await m.answer(
+            f"🎁 <b>Confirm Trial</b>\n\n"
+            f"👥 Members: <b>{TRIAL_MEMBERS}</b>\n"
+            f"💰 Cost: <b>FREE</b>\n\n"
+            f"🎯 {data['target']}\n🏠 {link}\n\nConfirm?",
+            reply_markup=free_confirm_kb(lg))
+        return
+    pts = get_points(m.from_user.id)
+    await state.set_state(FreeOrder.amount)
+    await m.answer(t(lg,"free_amount", ppm=POINTS_PER_MEMBER, points=pts),
+                   reply_markup=cancel_kb(lg))
 
-def get_current_api_key():
-    global api_keys, current_api_index
-    if api_keys and current_api_index < len(api_keys):
-        return api_keys[current_api_index]
-    return GREEN_SMS_API_KEY
+@dp.message(FreeOrder.amount)
+async def free_amount(m: types.Message, state: FSMContext):
+    lg = get_lang(m.from_user.id)
+    txt = (m.text or "").strip()
+    if not txt.isdigit() or int(txt) < 1:
+        await m.answer(t(lg,"free_invalid_num")); return
+    members = int(txt)
+    cost = members * POINTS_PER_MEMBER
+    pts = get_points(m.from_user.id)
+    if cost > pts:
+        await m.answer(t(lg,"free_no_points", points=pts, need=cost, members=members),
+                       reply_markup=cancel_kb(lg)); return
+    data = await state.get_data()
+    await state.update_data(members=members, cost=cost)
+    await state.set_state(FreeOrder.confirm)
+    await m.answer(
+        t(lg,"free_confirm", members=members, cost=cost, points=pts,
+          remaining=pts-cost, target=data["target"], own=data["own"]),
+        reply_markup=free_confirm_kb(lg))
 
+@dp.callback_query(F.data == "free_yes")
+async def free_confirm(c: types.CallbackQuery, state: FSMContext):
+    lg = get_lang(c.from_user.id)
+    data = await state.get_data()
+    if not data.get("members"):
+        await c.answer("❌"); await state.clear(); return
+    is_trial = data.get("trial", False)
+    members = data["members"]; cost = data["cost"]
+    if not is_trial:
+        pts = get_points(c.from_user.id)
+        if cost > pts:
+            await c.answer(t(lg,"free_no_points", points=pts, need=cost, members=members),
+                           show_alert=True); await state.clear(); return
+        conn.execute("UPDATE users SET points=points-? WHERE user_id=?",
+                     (cost, c.from_user.id))
+    if is_trial:
+        conn.execute("INSERT OR REPLACE INTO trial_used(user_id,used_at) VALUES(?,?)",
+                     (c.from_user.id, now_str()))
+    conn.execute(
+        "INSERT INTO orders(user_id,accounts,members,order_type,points_used,"
+        "is_trial,status,note,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        (c.from_user.id, 0, members, "trial" if is_trial else "free",
+         cost, 1 if is_trial else 0, "pending",
+         f"TARGET: {data['target']}\nOWN: {data['own']}", now_str(), now_str()))
+    conn.commit()
+    oid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
-async def rotate_api_key(conn):
-    global current_api_index, GREEN_SMS_API_KEY
-    if not api_keys:
-        return None
-    current_api_index = (current_api_index + 1) % len(api_keys)
-    GREEN_SMS_API_KEY = api_keys[current_api_index]
-    logger.info("Rotated to API key #" + str(current_api_index + 1))
-    return GREEN_SMS_API_KEY
+    await animate_edit(c, "✨ <b>Processing</b> {f}", frames=5, delay=0.4)
 
+    if OWNER_GROUP_ID:
+        badge = "🎁 TRIAL" if is_trial else "💎 FREE"
+        try:
+            await bot.send_message(OWNER_GROUP_ID,
+                f"{badge} <b>ORDER #{oid}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 {user_tag(c.from_user)}\n"
+                f"🆔 <code>{c.from_user.id}</code>\n"
+                f"👥 <b>Members:</b> {members}\n"
+                f"💰 <b>Points:</b> {cost}\n"
+                f"🎯 <b>Target:</b> {data['target']}\n"
+                f"🏠 <b>Own:</b> {data['own']}\n"
+                f"🕒 {now_str()}")
+        except Exception: pass
 
-# ═══════════════════════════════════════════════════════
-# API FETCH
-# ═══════════════════════════════════════════════════════
+    await state.clear()
+    delivery = get_setting("delivery_time", DEFAULT_DELIVERY)
+    remaining = get_points(c.from_user.id)
+    await c.message.edit_text(
+        t(lg,"free_done", members=members, cost=cost,
+          remaining=remaining, time=delivery),
+        reply_markup=IKM(inline_keyboard=[
+            [IKB(text=t(lg,"btn_points"), callback_data="my_points")],
+            [IKB(text=t(lg,"btn_menu"),   callback_data="menu")],
+        ]))
+    await c.answer("🎉")
 
-async def fetch_all_messages(since_dt=""):
-    api_key = get_current_api_key()
-    if not api_key:
-        raise RuntimeError("No API key available")
+@dp.callback_query(F.data == "free_no")
+async def free_no(c: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    lg = get_lang(c.from_user.id)
+    await c.message.edit_text(t(lg,"cancelled"),
+                              reply_markup=user_menu(lg, uid=c.from_user.id))
+    await c.answer()
 
-    all_messages = []
-    if not since_dt:
-        since_dt = "2020-01-01 00:00:00"
+# ---------------- REFERRAL ----------------
+@dp.callback_query(F.data == "referral")
+async def cb_referral(c: types.CallbackQuery):
+    lg = get_lang(c.from_user.id)
+    me = await bot.get_me()
+    link = f"https://t.me/{me.username}?start=ref_{c.from_user.id}"
+    pts = get_points(c.from_user.id)
+    refs = get_ref_count(c.from_user.id)
+    await c.message.edit_text(
+        f"{t(lg,'ref_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        + t(lg,"ref_body", link=link, points=pts, refs=refs,
+            reward=REFERRAL_POINTS, ppm=POINTS_PER_MEMBER),
+        reply_markup=IKM(inline_keyboard=[
+            [IKB(text="📤  Share Link",
+                 url=f"https://t.me/share/url?url={link}&text=Join!")],
+            [IKB(text=t(lg,"btn_points"), callback_data="my_points")],
+            [IKB(text=t(lg,"btn_menu"),   callback_data="menu")],
+        ]))
+    await c.answer()
 
-    current_dt2 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    batch_count = 0
-    total_fetched = 0
-    last_used_dt2 = None
-    records_limit = MAX_RECORDS
+# ---------------- COUPON REDEEM ----------------
+@dp.callback_query(F.data == "redeem_prompt")
+async def cb_redeem_prompt(c: types.CallbackQuery):
+    lg = get_lang(c.from_user.id)
+    await c.message.edit_text(t(lg,"coupon_prompt"),
+        reply_markup=IKM(inline_keyboard=[[
+            IKB(text=t(lg,"btn_menu"), callback_data="menu")
+        ]]))
+    await c.answer()
 
-    logger.info("Fetching: " + since_dt + " -> " + current_dt2)
+@dp.message(Command("redeem"))
+async def cmd_redeem(m: types.Message):
+    p = m.text.split(maxsplit=1)
+    if len(p) < 2: await m.answer("Usage: <code>/redeem CODE</code>"); return
+    code = p[1].strip().upper()
+    row = conn.execute("SELECT points,max_uses,uses FROM coupons WHERE code=?",
+                       (code,)).fetchone()
+    if not row: await m.answer("❌ <b>Invalid code!</b>"); return
+    pts, max_u, used = row
+    if used >= max_u: await m.answer("❌ <b>Code expired</b>"); return
+    already = conn.execute("SELECT id FROM coupon_uses WHERE code=? AND user_id=?",
+                           (code, m.from_user.id)).fetchone()
+    if already: await m.answer("❌ <b>Already used!</b>"); return
 
+    conn.execute("UPDATE coupons SET uses=uses+1 WHERE code=?", (code,))
+    conn.execute("INSERT INTO coupon_uses(code,user_id,used_at) VALUES(?,?,?)",
+                 (code, m.from_user.id, now_str()))
+    add_points(m.from_user.id, pts)
+    conn.commit()
+
+    await animate_msg(m.chat.id,
+        "🎊 <b>Redeeming</b> {f}",
+        frames=4, delay=0.4,
+        final_text=(
+            "🎉 <b>𝐂𝐎𝐔𝐏𝐎𝐍 𝐑𝐄𝐃𝐄𝐄𝐌𝐄𝐃</b> 🎉\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎟 Code: <code>{code}</code>\n"
+            f"💰 Earned: <b>+{pts} points</b>\n"
+            f"💰 Total: <b>{get_points(m.from_user.id)}</b>\n\n"
+            "✨ Enjoy! 🌟"
+        ))
+
+# ==========================================================
+#                📜 HISTORY / 👥 MEMBERS / ❓ HELP / 🎫 TICKETS
+# ==========================================================
+@dp.callback_query(F.data == "history")
+async def cb_history(c: types.CallbackQuery):
+    lg = get_lang(c.from_user.id)
+    rows = conn.execute("SELECT id,accounts,members,order_type,status,created_at "
+                        "FROM orders WHERE user_id=? ORDER BY id DESC LIMIT 20",
+                        (c.from_user.id,)).fetchall()
+    if not rows:
+        await c.message.edit_text(f"{t(lg,'history_title')}\n\n{t(lg,'history_empty')}",
+                                  reply_markup=user_menu(lg, uid=c.from_user.id))
+        await c.answer(); return
+    text = f"{t(lg,'history_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    for oid,a,mm,ot,st,tm in rows:
+        tag = "🎁 TRIAL" if ot == "trial" else ("💎 FREE" if ot == "free" else "📦 PAID")
+        text += (f"🗓 <b>#{oid}</b> {tag}\n"
+                 f"📦 {a} | 👥 {mm}\n"
+                 f"📌 <b>{status_label(lg,st)}</b>\n"
+                 f"🕒 {tm}\n\n")
+    if len(text) > 4000: text = text[:3990] + "..."
+    await c.message.edit_text(text, reply_markup=user_menu(lg, uid=c.from_user.id))
+    await c.answer()
+
+@dp.callback_query(F.data == "members")
+async def cb_members(c: types.CallbackQuery):
+    lg = get_lang(c.from_user.id)
+    accs = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?",
+                        (c.from_user.id,)).fetchone()[0]
+    rate = members_per_account()
+    pts = get_points(c.from_user.id)
+    await c.message.edit_text(
+        f"{t(lg,'members_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        + t(lg,"members_body", rate=rate, accounts=accs,
+            ppm=POINTS_PER_MEMBER, points=pts),
+        reply_markup=user_menu(lg, uid=c.from_user.id))
+    await c.answer()
+
+@dp.callback_query(F.data == "help")
+async def cb_help(c: types.CallbackQuery):
+    lg = get_lang(c.from_user.id)
+    await c.message.edit_text(
+        f"{t(lg,'help_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        + t(lg,"help_body", support=CUSTOMER_SERVICE),
+        reply_markup=IKM(inline_keyboard=[
+            [IKB(text=t(lg,"btn_support"), url=f"https://t.me/{CUSTOMER_SERVICE}")],
+            [IKB(text=t(lg,"btn_menu"), callback_data="menu")],
+        ]))
+    await c.answer()
+
+@dp.callback_query(F.data == "new_ticket")
+async def cb_new_ticket(c: types.CallbackQuery, state: FSMContext):
+    lg = get_lang(c.from_user.id)
+    await state.set_state(TicketFlow.message)
+    await c.message.edit_text(f"{t(lg,'ticket_title')}\n\n{t(lg,'ticket_guide')}",
+                              reply_markup=cancel_kb(lg))
+    await c.answer()
+
+@dp.message(TicketFlow.message)
+async def ticket_msg(m: types.Message, state: FSMContext):
+    body = (m.text or "").strip()
+    if not body: await m.answer("❌"); return
+    conn.execute("INSERT INTO tickets(user_id,message,status,created_at) VALUES(?,?,?,?)",
+                 (m.from_user.id, body, "open", now_str()))
+    conn.commit()
+    tid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    await state.clear()
+    kb = IKM(inline_keyboard=[[
+        IKB(text="✉️  Reply", callback_data=f"treply:{tid}"),
+        IKB(text="✅  Close", callback_data=f"tclose:{tid}"),
+    ]])
+    if OWNER_GROUP_ID:
+        try:
+            await bot.send_message(OWNER_GROUP_ID,
+                f"🎫 <b>Ticket #{tid}</b>\n\n"
+                f"👤 {user_tag(m.from_user)} (<code>{m.from_user.id}</code>)\n"
+                f"🕒 {now_str()}\n\n💬 {body}", reply_markup=kb)
+        except Exception: pass
+    lg = get_lang(m.from_user.id)
+    await m.answer(t(lg,"ticket_sent",id=tid),
+                   reply_markup=user_menu(lg, uid=m.from_user.id))
+
+@dp.callback_query(F.data.startswith("treply:"))
+async def ticket_reply_start(c: types.CallbackQuery, state: FSMContext):
+    if not is_owner(c.from_user.id):
+        await c.answer("Owner only", show_alert=True); return
+    tid = int(c.data.split(":")[1])
+    await state.update_data(ticket_id=tid)
+    await state.set_state(TicketFlow.reply)
+    await c.message.answer(f"✉️ Reply to Ticket #{tid}:")
+    await c.answer()
+
+@dp.message(TicketFlow.reply)
+async def ticket_reply_send(m: types.Message, state: FSMContext):
+    if not is_owner(m.from_user.id): return
+    data = await state.get_data()
+    tid = data.get("ticket_id")
+    reply = (m.text or "").strip()
+    row = conn.execute("SELECT user_id FROM tickets WHERE id=?",(tid,)).fetchone()
+    if not row: await m.answer("❌"); await state.clear(); return
+    uid = row[0]
+    conn.execute("UPDATE tickets SET reply=?,status='closed',replied_at=? WHERE id=?",
+                 (reply, now_str(), tid)); conn.commit()
+    try:
+        await bot.send_message(uid,
+            f"📩 <b>Ticket #{tid} Reply</b>\n\n{reply}\n\n🛎 @{CUSTOMER_SERVICE}")
+    except Exception: pass
+    await state.clear()
+    await m.answer(f"✅ Replied #{tid}")
+
+@dp.callback_query(F.data.startswith("tclose:"))
+async def ticket_close(c: types.CallbackQuery):
+    if not is_owner(c.from_user.id): return
+    tid = int(c.data.split(":")[1])
+    conn.execute("UPDATE tickets SET status='closed',replied_at=? WHERE id=?",
+                 (now_str(), tid)); conn.commit()
+    try: await c.message.edit_reply_markup(reply_markup=None)
+    except Exception: pass
+    await c.answer("✅")
+
+# ==========================================================
+#                    👑 OWNER PANEL
+# ==========================================================
+@dp.message(Command("admin"))
+async def cmd_admin(m: types.Message, state: FSMContext):
+    if not is_owner(m.from_user.id): return
+    await state.clear()
+    await m.answer("👑 <b>𝐎𝐖𝐍𝐄𝐑 𝐏𝐀𝐍𝐄𝐋</b>\n━━━━━━━━━━━━━━━━━━━━",
+                   reply_markup=owner_menu())
+
+@dp.callback_query(F.data == "admin_home")
+async def admin_home(c: types.CallbackQuery, state: FSMContext):
+    if not is_owner(c.from_user.id): return
+    await state.clear()
+    await c.message.edit_text("👑 <b>𝐎𝐖𝐍𝐄𝐑 𝐏𝐀𝐍𝐄𝐋</b>\n━━━━━━━━━━━━━━━━━━━━",
+                              reply_markup=owner_menu())
+    await c.answer()
+
+@dp.message(Command("setgroup"))
+async def cmd_setgroup(m: types.Message):
+    global OWNER_GROUP_ID
+    if not is_owner(m.from_user.id): return
+    if m.chat.type in ("group","supergroup"): OWNER_GROUP_ID = m.chat.id
+    else: await m.answer("❌ Group me chalao."); return
+    set_setting("owner_group_id", str(OWNER_GROUP_ID))
+    await m.answer(f"✅ Owner group: <code>{OWNER_GROUP_ID}</code>")
+
+# ---------------- ORDERS / QUEUE ----------------
+@dp.callback_query(F.data == "o_orders")
+async def o_orders(c: types.CallbackQuery):
+    if not is_owner(c.from_user.id): return
+    rows = conn.execute("SELECT id,user_id,accounts,members,order_type,status,created_at "
+                        "FROM orders ORDER BY id DESC LIMIT 30").fetchall()
+    if not rows:
+        await c.message.edit_text("📦 No orders.", reply_markup=owner_menu())
+        await c.answer(); return
+    text = "📦 <b>𝐎𝐑𝐃𝐄𝐑𝐒</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    kb = []
+    for oid,uid,a,mm,ot,st,tm in rows:
+        em = {"pending":"⏳","process":"🔄","complete":"✅","rejected":"❌"}.get(st,"❔")
+        typ = "🎁" if ot=="trial" else ("💎" if ot=="free" else "📦")
+        text += f"{em} {typ} <b>#{oid}</b> | 👤<code>{uid}</code> | 📦{a} 👥{mm}\n🕒 {tm}\n\n"
+        kb.append([IKB(text=f"{em} {typ} #{oid}", callback_data=f"vieword:{oid}")])
+    kb.append([IKB(text="🔙 Admin", callback_data="admin_home")])
+    await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=kb))
+    await c.answer()
+
+@dp.callback_query(F.data == "o_queue")
+async def o_queue(c: types.CallbackQuery):
+    if not is_owner(c.from_user.id): return
+    rows = conn.execute("""
+        SELECT o.id, o.user_id, o.accounts, o.members, o.order_type,
+               o.created_at, u.is_vip
+        FROM orders o LEFT JOIN users u ON u.user_id = o.user_id
+        WHERE o.status IN ('pending','process')
+        ORDER BY COALESCE(u.is_vip,0) DESC, o.id ASC LIMIT 20""").fetchall()
+    if not rows:
+        await c.message.edit_text("📋 <b>Queue Empty</b> ✨", reply_markup=owner_menu())
+        await c.answer(); return
+    text = "📋 <b>𝐐𝐔𝐄𝐔𝐄</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    kb = []
+    for i,(oid,uid,a,mm,ot,ct,is_v) in enumerate(rows,1):
+        badge = "👑 VIP" if is_v else "📦"
+        typ = "🎁" if ot=="trial" else ("💎" if ot=="free" else "📦")
+        text += f"<b>#{i}</b> {badge} {typ} #{oid} | 👤<code>{uid}</code> | 👥{mm}\n🕒 {ct}\n\n"
+        kb.append([IKB(text=f"▶️ #{oid}", callback_data=f"vieword:{oid}")])
+    kb.append([IKB(text="🔙 Admin", callback_data="admin_home")])
+    await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=kb))
+    await c.answer()
+
+@dp.callback_query(F.data.startswith("vieword:"))
+async def view_order(c: types.CallbackQuery):
+    if not is_owner(c.from_user.id): return
+    oid = int(c.data.split(":")[1])
+    r = conn.execute("SELECT id,user_id,accounts,members,order_type,points_used,is_trial,"
+                     "status,note,created_at,updated_at FROM orders WHERE id=?",(oid,)).fetchone()
+    if not r: await c.answer("Not found", show_alert=True); return
+    accs = conn.execute("SELECT phone,session_enc,target_link,own_link FROM accounts "
+                        "WHERE user_id=? ORDER BY id",(r[1],)).fetchall()
+    em = {"pending":"⏳","process":"🔄","complete":"✅","rejected":"❌"}.get(r[7],"❔")
+    typ = "🎁 TRIAL" if r[6] else ("💎 FREE" if r[4]=="free" else "📦 PAID")
+    text = (f"📦 <b>Order #{r[0]}</b>  {typ}\n━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👤 <code>{r[1]}</code>\n"
+            f"📦 Accounts: <b>{r[2]}</b>\n"
+            f"👥 Members: <b>{r[3]}</b>\n")
+    if r[5]: text += f"💰 Points: <b>{r[5]}</b>\n"
+    text += (f"{em} <b>{r[7]}</b>\n"
+             f"💬 {r[8] or '—'}\n"
+             f"🕒 {r[9]}\n🔄 {r[10]}\n\n")
+    if accs and not r[6]:
+        text += "🔑 <b>Sessions:</b>\n"
+        for i,(ph,enc,tg,own) in enumerate(accs,1):
+            try: s = cipher.decrypt(enc).decode()
+            except Exception: s = "❌"
+            text += (f"<b>#{i}</b> 📱<code>{ph}</code>\n"
+                     f"🎯 {tg or '—'}\n🏠 {own or '—'}\n<code>{s}</code>\n\n")
+    if len(text) > 4000: text = text[:3990] + "..."
+    await c.message.edit_text(text, reply_markup=order_status_kb(r[0]))
+    await c.answer()
+
+@dp.callback_query(F.data.startswith("setst:"))
+async def change_status(c: types.CallbackQuery, state: FSMContext):
+    if not is_owner(c.from_user.id): return
+    _, oid, new_st = c.data.split(":")
+    await state.update_data(order_id=int(oid), new_status=new_st)
+    await state.set_state(AdminFlow.status_note)
+    await c.message.edit_text(
+        f"✏️ Note for <b>{new_st}</b> (or <code>-</code> skip):",
+        reply_markup=IKM(inline_keyboard=[[
+            IKB(text="⏭  Skip", callback_data=f"skipnote:{oid}:{new_st}")
+        ]]))
+    await c.answer()
+
+@dp.callback_query(F.data.startswith("skipnote:"))
+async def skip_note(c: types.CallbackQuery, state: FSMContext):
+    if not is_owner(c.from_user.id): return
+    _, oid, new_st = c.data.split(":")
+    await state.clear()
+    await apply_status_change(c, int(oid), new_st, "")
+    await c.answer()
+
+@dp.message(AdminFlow.status_note)
+async def status_note_msg(m: types.Message, state: FSMContext):
+    if not is_owner(m.from_user.id): return
+    data = await state.get_data()
+    note = (m.text or "").strip()
+    if note == "-": note = ""
+    await state.clear()
+    await apply_status_change(m, data["order_id"], data["new_status"], note)
+
+async def apply_status_change(evt, oid, new_st, note):
+    row = conn.execute("SELECT user_id FROM orders WHERE id=?",(oid,)).fetchone()
+    if not row:
+        try: await evt.answer("Not found")
+        except Exception: pass
+        return
+    uid = row[0]
+    conn.execute("UPDATE orders SET status=?,note=?,updated_at=? WHERE id=?",
+                 (new_st, note, now_str(), oid)); conn.commit()
+    lg = get_lang(uid)
+    try:
+        await bot.send_message(uid,
+            t(lg,"owner_msg_status", id=oid, status=status_label(lg,new_st),
+              note=note or "—", support=CUSTOMER_SERVICE))
+    except Exception: pass
+    text = f"✅ Order <b>#{oid}</b> → <b>{new_st}</b>"
+    try: await evt.message.edit_text(text, reply_markup=order_status_kb(oid))
+    except Exception:
+        try: await bot.send_message(OWNER_ID, text, reply_markup=order_status_kb(oid))
+        except Exception: pass
+
+@dp.callback_query(F.data.startswith("ordmsg:"))
+async def order_msg_user(c: types.CallbackQuery, state: FSMContext):
+    if not is_owner(c.from_user.id): return
+    oid = int(c.data.split(":")[1])
+    row = conn.execute("SELECT user_id FROM orders WHERE id=?",(oid,)).fetchone()
+    if not row: await c.answer("Not found", show_alert=True); return
+    await state.update_data(msg_target=row[0])
+    await state.set_state(AdminFlow.msg_user)
+    await c.message.edit_text(f"✉️ Message to <code>{row[0]}</code>:",
+                              reply_markup=admin_back_kb())
+    await c.answer()
+
+# ---------------- USERS / STATS / ANALYTICS ----------------
+@dp.callback_query(F.data == "o_users")
+async def o_users(c: types.CallbackQuery):
+    if not is_owner(c.from_user.id): return
+    rows = conn.execute("""
+        SELECT u.user_id,u.username,u.first_name,u.banned,u.lang,u.points,u.ref_count,
+        (SELECT COUNT(*) FROM accounts a WHERE a.user_id=u.user_id),
+        (SELECT COUNT(*) FROM orders o WHERE o.user_id=u.user_id)
+        FROM users u ORDER BY u.joined_at DESC LIMIT 50""").fetchall()
+    if not rows:
+        await c.message.edit_text("No users.", reply_markup=owner_menu())
+        await c.answer(); return
+    text = f"👥 <b>All Users</b> ({len(rows)})\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    for uid,un,fn,ban,lg,pts,refs,cnt,ords in rows:
+        flag = "🚫" if ban else "✅"
+        text += (f"{flag} {fn} (@{un or '—'}) [{lg or 'en'}]\n"
+                 f"   🆔 <code>{uid}</code> | 💰{pts} | 🎁{refs} | 📱{cnt} | 📦{ords}\n\n")
+    text += "<i>/user &lt;id&gt;</i>"
+    await c.message.edit_text(text, reply_markup=owner_menu())
+    await c.answer()
+
+@dp.callback_query(F.data == "o_stats")
+async def o_stats(c: types.CallbackQuery):
+    if not is_owner(c.from_user.id): return
+    u = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    a = conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
+    o = conn.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
+    paid = conn.execute("SELECT COUNT(*) FROM orders WHERE order_type='paid'").fetchone()[0]
+    free = conn.execute("SELECT COUNT(*) FROM orders WHERE order_type='free'").fetchone()[0]
+    trial = conn.execute("SELECT COUNT(*) FROM orders WHERE order_type='trial'").fetchone()[0]
+    pe = conn.execute("SELECT COUNT(*) FROM orders WHERE status='pending'").fetchone()[0]
+    pr = conn.execute("SELECT COUNT(*) FROM orders WHERE status='process'").fetchone()[0]
+    co = conn.execute("SELECT COUNT(*) FROM orders WHERE status='complete'").fetchone()[0]
+    rj = conn.execute("SELECT COUNT(*) FROM orders WHERE status='rejected'").fetchone()[0]
+    b = conn.execute("SELECT COUNT(*) FROM users WHERE banned=1").fetchone()[0]
+    tk = conn.execute("SELECT COUNT(*) FROM tickets WHERE status='open'").fetchone()[0]
+    tp = conn.execute("SELECT COALESCE(SUM(points),0) FROM users").fetchone()[0]
+    vip = conn.execute("SELECT COUNT(*) FROM users WHERE is_vip=1").fetchone()[0]
+    text = (f"📊 <b>𝐒𝐓𝐀𝐓𝐈𝐒𝐓𝐈𝐂𝐒</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👥 Users: <b>{u}</b>  🚫 <b>{b}</b>  👑 VIP: <b>{vip}</b>\n"
+            f"📱 Accounts: <b>{a}</b>\n"
+            f"📦 Orders: <b>{o}</b>  (📦{paid} 💎{free} 🎁{trial})\n"
+            f"💰 Points: <b>{tp}</b>\n"
+            f"🎫 Open Tickets: <b>{tk}</b>\n\n"
+            f"⏳ Pending: <b>{pe}</b>  🔄 <b>{pr}</b>\n"
+            f"✅ Complete: <b>{co}</b>  ❌ <b>{rj}</b>\n\n"
+            f"⚙️ Rate: <b>{members_per_account()}</b>/account\n"
+            f"💎 {POINTS_PER_MEMBER}pts = 1 member")
+    await c.message.edit_text(text, reply_markup=owner_menu())
+    await c.answer()
+
+@dp.callback_query(F.data == "o_analytics")
+async def o_analytics(c: types.CallbackQuery):
+    if not is_owner(c.from_user.id): return
+    await animate_edit(c, "📊 <b>Loading</b> {f}", frames=4, delay=0.5)
+    today = datetime.date.today()
+    week_ago = (today - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+    tu = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    ta = conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
+    to = conn.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
+    tp = conn.execute("SELECT COALESCE(SUM(points),0) FROM users").fetchone()[0]
+    nu = conn.execute("SELECT COUNT(*) FROM users WHERE joined_at > ?",(week_ago,)).fetchone()[0]
+    no = conn.execute("SELECT COUNT(*) FROM orders WHERE created_at > ?",(week_ago,)).fetchone()[0]
+    nc = conn.execute("SELECT COUNT(*) FROM orders WHERE status='complete' AND created_at > ?",
+                      (week_ago,)).fetchone()[0]
+    top = conn.execute("""SELECT u.first_name, u.user_id, COUNT(*) FROM users u
+        WHERE u.referred_by IS NOT NULL GROUP BY u.referred_by
+        ORDER BY COUNT(*) DESC LIMIT 5""").fetchall()
+    text = (f"📊 <b>𝐀𝐍𝐀𝐋𝐘𝐓𝐈𝐂𝐒</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"✨ <b>All Time:</b>\n  👥 {tu}\n  📱 {ta}\n  📦 {to}\n  💰 {tp}pts\n\n"
+            f"🌟 <b>Last 7 Days:</b>\n  🆕 {nu}\n  📦 {no}\n  ✅ {nc}\n\n")
+    if top:
+        text += "🏆 <b>Top Referrers:</b>\n"
+        for i,(name,uid,cnt) in enumerate(top,1):
+            medal = ["🥇","🥈","🥉","🎖","⭐"][i-1]
+            text += f"  {medal} {name or 'User'} — <b>{cnt}</b>\n"
+    await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=[
+        [IKB(text="🔄  Refresh", callback_data="o_analytics")],
+        [IKB(text="🔙  Admin",   callback_data="admin_home")],
+    ]))
+    await c.answer()
+
+# ---------------- SESSIONS / MSG / BROADCAST / FIND ----------------
+@dp.callback_query(F.data == "o_sessions")
+async def o_sessions(c: types.CallbackQuery):
+    if not is_owner(c.from_user.id): return
+    rows = conn.execute("SELECT user_id,phone,session_enc,target_link,own_link "
+                        "FROM accounts ORDER BY id DESC LIMIT 10").fetchall()
+    text = "🔑 <b>Sessions (10)</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    for uid,ph,enc,tg,own in rows:
+        try: s = cipher.decrypt(enc).decode()
+        except Exception: s = "ERR"
+        text += (f"👤 <code>{uid}</code> 📱<code>{ph}</code>\n"
+                 f"🎯 {tg or '—'} 🏠 {own or '—'}\n"
+                 f"<code>{s[:90]}...</code>\n\n")
+    if len(text) > 4000: text = text[:3990] + "..."
+    await c.message.edit_text(text, reply_markup=owner_menu())
+    await c.answer()
+
+@dp.callback_query(F.data == "o_msg_user")
+async def o_msg_user(c: types.CallbackQuery, state: FSMContext):
+    if not is_owner(c.from_user.id): return
+    await state.set_state(AdminFlow.msg_user)
+    await c.message.edit_text("✉️ Format: <code>&lt;uid&gt; | message</code>",
+                              reply_markup=admin_back_kb())
+    await c.answer()
+
+@dp.message(AdminFlow.msg_user)
+async def send_user_msg(m: types.Message, state: FSMContext):
+    if not is_owner(m.from_user.id): return
+    data = await state.get_data()
+    target = data.get("msg_target")
+    body = m.text or ""
+    if target:
+        uid, msg_text = target, body
+    else:
+        if "|" not in body:
+            await m.answer("❌ <code>uid | message</code>"); return
+        left,_,right = body.partition("|")
+        try: uid = int(left.strip())
+        except ValueError: await m.answer("❌ ID numeric."); return
+        msg_text = right.strip()
+    await state.clear()
+    lg = get_lang(uid)
+    try:
+        await bot.send_message(uid, t(lg,"owner_msg_custom",msg=msg_text,
+                                      support=CUSTOMER_SERVICE))
+        await m.answer(f"✅ Sent to <code>{uid}</code>.", reply_markup=owner_menu())
+    except Exception as e:
+        await m.answer(f"❌ <code>{str(e)[:200]}</code>", reply_markup=owner_menu())
+
+@dp.callback_query(F.data == "o_broadcast")
+async def o_broadcast(c: types.CallbackQuery, state: FSMContext):
+    if not is_owner(c.from_user.id): return
+    await state.set_state(AdminFlow.broadcast)
+    await c.message.edit_text("📢 Send broadcast:", reply_markup=admin_back_kb())
+    await c.answer()
+
+@dp.message(AdminFlow.broadcast)
+async def do_broadcast(m: types.Message, state: FSMContext):
+    if not is_owner(m.from_user.id): return
+    body = m.text or ""
+    users = conn.execute("SELECT user_id FROM users WHERE banned=0").fetchall()
+    sent = failed = 0
+    msg = await m.answer(f"⏳ Sending to {len(users)}...")
+    for (uid,) in users:
+        try:
+            lg = get_lang(uid)
+            await bot.send_message(uid, t(lg,"owner_msg_custom",msg=body,
+                                          support=CUSTOMER_SERVICE))
+            sent += 1; await asyncio.sleep(0.05)
+        except Exception: failed += 1
+    await msg.edit_text(f"✅ Sent: {sent}\n❌ Failed: {failed}", reply_markup=owner_menu())
+    await state.clear()
+
+@dp.callback_query(F.data == "o_find")
+async def o_find(c: types.CallbackQuery, state: FSMContext):
+    if not is_owner(c.from_user.id): return
+    await state.set_state(AdminFlow.find_user)
+    await c.message.edit_text("🔎 Send user ID:", reply_markup=admin_back_kb())
+    await c.answer()
+
+@dp.message(AdminFlow.find_user)
+async def do_find(m: types.Message, state: FSMContext):
+    if not is_owner(m.from_user.id): return
+    try: uid = int(m.text.strip())
+    except ValueError: await m.answer("Numeric only."); return
+    await state.clear()
+    await send_user_report(m, uid)
+
+async def send_user_report(m, uid):
+    rows = conn.execute("SELECT id,phone,session_enc,target_link,own_link,created_at "
+                        "FROM accounts WHERE user_id=?",(uid,)).fetchall()
+    u = conn.execute("SELECT username,first_name,banned,lang,points,ref_count,referred_by,is_vip "
+                     "FROM users WHERE user_id=?",(uid,)).fetchone()
+    orders = conn.execute("SELECT id,accounts,members,order_type,status,created_at "
+                          "FROM orders WHERE user_id=? ORDER BY id DESC",(uid,)).fetchall()
+    text = (f"👤 <b>User Report</b>\n━━━━━━━━━━━━━━━━━━━━\n"
+            f"Name: {u[1] if u else '—'}\n"
+            f"Username: @{u[0] if u and u[0] else '—'}\n"
+            f"ID: <code>{uid}</code>\n"
+            f"Lang: {u[3] if u else 'en'}\n"
+            f"{'👑 VIP' if u and u[7] else 'Normal'}\n"
+            f"Banned: {'🚫' if u and u[2] else '✅'}\n"
+            f"💰 Points: {u[4] if u else 0}\n"
+            f"🎁 Referrals: {u[5] if u else 0}\n"
+            f"👥 Referred by: <code>{u[6] if u and u[6] else '—'}</code>\n"
+            f"📱 Accounts: {len(rows)} | Orders: {len(orders)}\n\n")
+    for r in rows:
+        try: sess = cipher.decrypt(r[2]).decode()
+        except Exception: sess = "⚠️"
+        text += (f"🆔 <code>{r[0]}</code> 📱 <code>{r[1]}</code>\n"
+                 f"🎯 {r[3] or '—'}\n🏠 {r[4] or '—'}\n"
+                 f"🔑 <code>{sess}</code>\n🕒 {r[5]}\n\n")
+    if orders:
+        text += "📦 <b>Orders:</b>\n"
+        for oid,a,mm,ot,st,tm in orders:
+            typ = "🎁" if ot=="trial" else ("💎" if ot=="free" else "📦")
+            text += f"  {typ} #{oid} | {a} accs | {mm} | <b>{st}</b> | {tm}\n"
+    if len(text) > 4000: text = text[:3990] + "..."
+    await m.answer(text, reply_markup=owner_menu())
+
+@dp.message(Command("user"))
+async def cmd_user(m: types.Message):
+    if not is_owner(m.from_user.id): return
+    p = m.text.split()
+    if len(p) < 2: await m.answer("Usage: <code>/user 12345</code>"); return
+    try: uid = int(p[1])
+    except ValueError: await m.answer("Numeric."); return
+    await send_user_report(m, uid)
+
+# ---------------- COUPONS ----------------
+@dp.callback_query(F.data == "o_coupons")
+async def o_coupons(c: types.CallbackQuery):
+    if not is_owner(c.from_user.id): return
+    rows = conn.execute("SELECT code,points,max_uses,uses,created_at FROM coupons "
+                        "ORDER BY created_at DESC LIMIT 20").fetchall()
+    text = "🎟 <b>𝐂𝐎𝐔𝐏𝐎𝐍𝐒</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    if not rows: text += "<i>No coupons.</i>\n\n"
+    else:
+        for code,pts,mx,us,ct in rows:
+            st = "✅" if us < mx else "❌"
+            text += f"{st} <code>{code}</code> — 💰{pts}\n   Used: {us}/{mx} | {ct}\n\n"
+    text += "\n<b>Create:</b>\n<code>/coupon CODE POINTS [MAX]</code>"
+    await c.message.edit_text(text, reply_markup=owner_menu())
+    await c.answer()
+
+@dp.message(Command("coupon"))
+async def cmd_coupon(m: types.Message):
+    if not is_owner(m.from_user.id): return
+    p = m.text.split()
+    if len(p) < 3: await m.answer("Usage: <code>/coupon NEW10 100 [max]</code>"); return
+    code = p[1].upper()
+    try:
+        pts = int(p[2]); max_u = int(p[3]) if len(p) > 3 else 1
+    except ValueError: await m.answer("Numbers only"); return
+    conn.execute("INSERT OR REPLACE INTO coupons(code,points,max_uses,uses,created_at) "
+                 "VALUES(?,?,?,0,?)", (code, pts, max_u, now_str()))
+    conn.commit()
+    await m.answer(f"🎟 <b>Coupon Created</b>\n🔖 <code>{code}</code>\n💰 {pts}\n👥 {max_u}")
+
+# ---------------- BACKUP / EXPORT / SETTINGS ----------------
+async def send_backup(target):
+    if not target: return
+    try:
+        with open("data.db","rb") as f: db_bytes = f.read()
+        await bot.send_document(target,
+            BufferedInputFile(db_bytes, filename=f"backup_{datetime.date.today()}.db"),
+            caption=f"💾 <b>Backup</b>\n🕒 {now_str()}")
+    except Exception as e: logging.warning(f"db backup: {e}")
+    try:
+        rows = conn.execute("SELECT * FROM accounts").fetchall()
+        buf = io.StringIO(); w = csv.writer(buf)
+        w.writerow(["id","user_id","phone","session","target","own","created"])
+        for r in rows:
+            try: s = cipher.decrypt(r[3]).decode()
+            except Exception: s = "ERR"
+            w.writerow([r[0],r[1],r[2],s,r[4],r[5],r[6]])
+        await bot.send_document(target,
+            BufferedInputFile(buf.getvalue().encode(),
+                              filename=f"accounts_{datetime.date.today()}.csv"))
+    except Exception as e: logging.warning(f"accs: {e}")
+
+@dp.callback_query(F.data == "o_backup")
+async def o_backup(c: types.CallbackQuery):
+    if not is_owner(c.from_user.id): return
+    await animate_edit(c, "💾 <b>Backing up</b> {f}", frames=4, delay=0.5)
+    await send_backup(c.from_user.id)
+    await c.message.answer("✅ Backup sent!", reply_markup=owner_menu())
+    await c.answer()
+
+@dp.message(Command("backup"))
+async def cmd_backup(m: types.Message):
+    if not is_owner(m.from_user.id): return
+    await animate_msg(m.chat.id, "💾 <b>Backing up</b> {f}", frames=4, delay=0.5)
+    await send_backup(m.chat.id)
+
+@dp.callback_query(F.data == "o_export")
+async def o_export(c: types.CallbackQuery):
+    if not is_owner(c.from_user.id): return
+    rows = conn.execute("SELECT * FROM accounts").fetchall()
+    buf = io.StringIO(); w = csv.writer(buf)
+    w.writerow(["id","user_id","phone","session","target","own","created"])
+    for r in rows:
+        try: s = cipher.decrypt(r[3]).decode()
+        except Exception: s = "ERR"
+        w.writerow([r[0],r[1],r[2],s,r[4],r[5],r[6]])
+    await c.message.answer_document(
+        BufferedInputFile(buf.getvalue().encode(), filename="accounts.csv"))
+    orows = conn.execute("SELECT * FROM orders").fetchall()
+    b2 = io.StringIO(); w2 = csv.writer(b2)
+    w2.writerow(["id","user_id","accounts","members","order_type","points_used",
+                 "is_trial","status","note","created","updated","priority"])
+    for r in orows: w2.writerow(list(r))
+    await c.message.answer_document(
+        BufferedInputFile(b2.getvalue().encode(), filename="orders.csv"))
+    await c.answer()
+
+@dp.callback_query(F.data == "o_settings")
+async def o_settings(c: types.CallbackQuery):
+    if not is_owner(c.from_user.id): return
+    d = get_setting("delivery_time", DEFAULT_DELIVERY)
+    r = members_per_account()
+    await c.message.edit_text(
+        f"⚙️ <b>Settings</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"⏱ Delivery: <b>{d}</b>\n"
+        f"👥 Rate: <b>{r}</b>/account\n"
+        f"💎 {POINTS_PER_MEMBER}pts = 1 member\n"
+        f"🎁 Referral: <b>+{REFERRAL_POINTS}pts</b>\n\n"
+        f"<code>/setdelivery 24 to 48 hours</code>\n"
+        f"<code>/setrate 5</code>\n"
+        f"<code>/addpoints UID AMT</code>\n"
+        f"<code>/coupon CODE POINTS [MAX]</code>\n"
+        f"<code>/addowner UID</code>\n"
+        f"<code>/addhelper UID</code>\n"
+        f"<code>/setvip UID DAYS</code>\n"
+        f"<code>/ban UID</code> /unban UID\n"
+        f"<code>/backup</code>",
+        reply_markup=owner_menu())
+    await c.answer()
+
+@dp.message(Command("setdelivery"))
+async def cmd_setdelivery(m: types.Message):
+    if not is_owner(m.from_user.id): return
+    txt = m.text.partition(" ")[2].strip()
+    if not txt: await m.answer("Usage: /setdelivery 24 to 48 hours"); return
+    set_setting("delivery_time", txt); await m.answer(f"✅ {txt}")
+
+@dp.message(Command("setrate"))
+async def cmd_setrate(m: types.Message):
+    if not is_owner(m.from_user.id): return
+    p = m.text.split()
+    if len(p) < 2 or not p[1].isdigit():
+        await m.answer("Usage: /setrate 5"); return
+    set_setting("members_per_account", p[1]); await m.answer(f"✅ {p[1]}/account")
+
+@dp.message(Command("addpoints"))
+async def cmd_addpoints(m: types.Message):
+    if not is_owner(m.from_user.id): return
+    p = m.text.split()
+    if len(p) < 3: await m.answer("Usage: /addpoints UID AMT"); return
+    try: uid, amt = int(p[1]), int(p[2])
+    except ValueError: await m.answer("Numbers."); return
+    add_points(uid, amt)
+    await m.answer(f"✅ +{amt} to <code>{uid}</code>\nTotal: {get_points(uid)}")
+
+@dp.message(Command("setvip"))
+async def cmd_setvip(m: types.Message):
+    if not is_owner(m.from_user.id): return
+    p = m.text.split()
+    if len(p) < 3: await m.answer("Usage: /setvip UID DAYS"); return
+    try: uid, days = int(p[1]), int(p[2])
+    except ValueError: await m.answer("Numbers."); return
+    until = (datetime.datetime.now() + datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+    conn.execute("UPDATE users SET is_vip=1,vip_until=? WHERE user_id=?", (until, uid))
+    conn.commit()
+    await m.answer(f"👑 VIP {uid} till {until}")
+
+@dp.message(Command("addowner"))
+async def cmd_addowner(m: types.Message):
+    if not is_owner(m.from_user.id): return
+    try: uid = int(m.text.split()[1])
+    except Exception: await m.answer("Usage: /addowner UID"); return
+    conn.execute("INSERT OR REPLACE INTO owners(user_id,role,added_at,added_by) "
+                 "VALUES(?,?,?,?)", (uid, "owner", now_str(), m.from_user.id))
+    conn.commit()
+    if uid not in OWNER_IDS: OWNER_IDS.append(uid)
+    await m.answer(f"👑 Owner added: <code>{uid}</code>")
+
+@dp.message(Command("addhelper"))
+async def cmd_addhelper(m: types.Message):
+    if not is_owner(m.from_user.id): return
+    try: uid = int(m.text.split()[1])
+    except Exception: await m.answer("Usage: /addhelper UID"); return
+    conn.execute("INSERT OR REPLACE INTO owners(user_id,role,added_at,added_by) "
+                 "VALUES(?,?,?,?)", (uid, "helper", now_str(), m.from_user.id))
+    conn.commit()
+    if uid not in HELPERS: HELPERS.append(uid)
+    await m.answer(f"🛡 Helper added: <code>{uid}</code>")
+
+@dp.message(Command("removeowner"))
+async def cmd_removeowner(m: types.Message):
+    if m.from_user.id != OWNER_ID: return
+    try: uid = int(m.text.split()[1])
+    except Exception: await m.answer("Usage: /removeowner UID"); return
+    if uid == OWNER_ID: await m.answer("❌ Cannot remove main"); return
+    conn.execute("DELETE FROM owners WHERE user_id=?", (uid,)); conn.commit()
+    if uid in OWNER_IDS: OWNER_IDS.remove(uid)
+    if uid in HELPERS: HELPERS.remove(uid)
+    await m.answer(f"✅ Removed <code>{uid}</code>")
+
+@dp.message(Command("ban"))
+async def cmd_ban(m: types.Message):
+    if not is_owner(m.from_user.id): return
+    try: uid = int(m.text.split()[1])
+    except Exception: await m.answer("Usage: /ban UID"); return
+    conn.execute("UPDATE users SET banned=1 WHERE user_id=?",(uid,)); conn.commit()
+    await m.answer(f"🚫 Banned <code>{uid}</code>")
+
+@dp.message(Command("unban"))
+async def cmd_unban(m: types.Message):
+    if not is_owner(m.from_user.id): return
+    try: uid = int(m.text.split()[1])
+    except Exception: await m.answer("Usage: /unban UID"); return
+    conn.execute("UPDATE users SET banned=0 WHERE user_id=?",(uid,)); conn.commit()
+    await m.answer(f"✅ Unbanned <code>{uid}</code>")
+
+# ---------------- TICKETS ----------------
+@dp.callback_query(F.data == "o_tickets")
+async def o_tickets(c: types.CallbackQuery):
+    if not is_owner(c.from_user.id): return
+    rows = conn.execute("SELECT id,user_id,message,status,created_at FROM tickets "
+                        "ORDER BY id DESC LIMIT 20").fetchall()
+    if not rows:
+        await c.message.edit_text("🎫 No tickets.", reply_markup=owner_menu())
+        await c.answer(); return
+    text = "🎫 <b>Tickets</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    kb = []
+    for tid,uid,msg,st,tm in rows:
+        em = "🔵" if st=="open" else "✅"
+        text += f"{em} <b>#{tid}</b> 👤<code>{uid}</code>\n💬 {msg[:70]}\n🕒 {tm}\n\n"
+        kb.append([IKB(text=f"{em} #{tid}",
+                       callback_data=f"treply:{tid}" if st=="open" else f"tv:{tid}")])
+    kb.append([IKB(text="🔙 Admin", callback_data="admin_home")])
+    await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=kb))
+    await c.answer()
+
+# ==========================================================
+#                    🔄 BACKGROUND LOOPS
+# ==========================================================
+async def backup_loop():
+    await asyncio.sleep(60)
     while True:
         try:
-            batch_count += 1
-            params = {"dt1": since_dt, "dt2": current_dt2, "records": records_limit}
-
-            response = await http_client.get(
-                GREEN_SMS_API,
-                headers={"Authorization": "Bearer " + api_key},
-                params=params,
-                timeout=30,
-            )
-
-            if response.status_code == 429:
-                retry_after = int(response.headers.get("Retry-After", 60))
-                logger.warning("Rate limited. Wait " + str(retry_after) + "s")
-                await asyncio.sleep(retry_after)
-                continue
-
-            if response.status_code == 503:
-                new_limit = max(10, records_limit // 2)
-                if new_limit < records_limit:
-                    records_limit = new_limit
-                    continue
-                break
-
-            if response.status_code == 401:
-                logger.error("401 Unauthorized")
-                conn = await init_db()
-                try:
-                    new_key = await rotate_api_key(conn)
-                    if new_key and new_key != api_key:
-                        api_key = new_key
-                        continue
-                finally:
-                    await conn.close()
-                raise RuntimeError("API 401 - invalid key")
-
-            if response.status_code != 200:
-                logger.error("HTTP " + str(response.status_code))
-                break
-
-            payload = response.json()
-            if payload.get("status") == "error":
-                logger.error("API error: " + str(payload.get("msg", "Unknown")))
-                break
-
-            results = payload.get("data", [])
-            if not results:
-                break
-
-            all_messages.extend(results)
-            total_fetched += len(results)
-
-            if len(results) < records_limit:
-                break
-
-            oldest_dt_str = results[-1].get("dt", "")
-            if not oldest_dt_str or oldest_dt_str == last_used_dt2:
-                break
-
-            last_used_dt2 = current_dt2
-            current_dt2 = oldest_dt_str
-
-            if batch_count >= MAX_BATCHES:
-                break
-
-        except httpx.TimeoutException:
-            await asyncio.sleep(5)
-            continue
+            now = datetime.datetime.utcnow()
+            target = now.replace(hour=BACKUP_HOUR_UTC, minute=0, second=0, microsecond=0)
+            if target < now: target += datetime.timedelta(days=1)
+            await asyncio.sleep((target - now).total_seconds())
+            await send_backup(OWNER_GROUP_ID)
+            logging.info("✅ Auto backup sent")
         except Exception as e:
-            logger.error("Fetch error: " + str(e))
-            break
+            logging.warning(f"backup_loop: {e}")
+            await asyncio.sleep(3600)
 
-    logger.info("Fetched " + str(total_fetched) + " messages")
-    all_messages.reverse()
-    return all_messages
-
-
-# ═══════════════════════════════════════════════════════
-# TELEGRAM HELPERS
-# ═══════════════════════════════════════════════════════
-
-async def telegram_call(method, payload, retries=3):
-    url = "https://api.telegram.org/bot" + BOT_TOKEN + "/" + method
-    for attempt in range(retries):
+async def reminder_loop():
+    await asyncio.sleep(300)
+    while True:
         try:
-            response = await http_client.post(url, json=payload, timeout=30)
-
-            if response.status_code == 429:
-                retry_after = int(response.headers.get("Retry-After", 1))
-                await asyncio.sleep(retry_after)
-                continue
-
-            if not response.is_success:
-                if attempt < retries - 1:
-                    await asyncio.sleep(2 ** attempt)
-                    continue
-                raise RuntimeError("TG HTTP " + str(response.status_code) + ": " + response.text[:300])
-
-            result = response.json()
-            if not result.get("ok"):
-                desc = result.get("description", "Unknown")
-                d = desc.lower()
-                if ("reply markup" in d) or ("button" in d) or ("parse" in d) or ("copy_text" in d):
-                    raise RuntimeError("TG markup error: " + desc)
-                if result.get("error_code") == 429 and attempt < retries - 1:
-                    wait = result.get("parameters", {}).get("retry_after", 1)
-                    await asyncio.sleep(wait)
-                    continue
-                raise RuntimeError("TG error: " + desc)
-            return result
-
-        except httpx.TimeoutException:
-            if attempt < retries - 1:
-                await asyncio.sleep(2 ** attempt)
-                continue
-            raise RuntimeError("TG timeout")
-        except RuntimeError:
-            raise
+            await asyncio.sleep(1800)
+            cutoff = (datetime.datetime.now() -
+                      datetime.timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+            rows = conn.execute("""
+                SELECT id,user_id,accounts,members,created_at FROM orders
+                WHERE status='pending' AND created_at < ?
+                LIMIT 10""", (cutoff,)).fetchall()
+            for oid,uid,accs,mem,ct in rows:
+                for o_id in OWNER_IDS:
+                    try:
+                        await bot.send_message(o_id,
+                            f"⏰ <b>REMINDER</b>\n"
+                            f"📦 Order <b>#{oid}</b> pending\n"
+                            f"👤 <code>{uid}</code>\n📱 {accs} | 👥 {mem}\n🕒 {ct}",
+                            reply_markup=IKM(inline_keyboard=[[
+                                IKB(text="▶️ View", callback_data=f"vieword:{oid}")
+                            ]]))
+                    except Exception: pass
+                await asyncio.sleep(0.5)
         except Exception as e:
-            if attempt < retries - 1:
-                await asyncio.sleep(2 ** attempt)
-                continue
-            raise RuntimeError("TG request failed: " + str(e))
-
-
-async def send_group_message(text, reply_markup):
-    payload = {
-        "chat_id": TELEGRAM_GROUP_ID,
-        "text": text,
-        "parse_mode": "HTML",
-        "reply_markup": reply_markup,
-        "disable_web_page_preview": True,
-    }
-    try:
-        return await telegram_call("sendMessage", payload)
-    except RuntimeError as e:
-        err = str(e).lower()
-        bad = (("reply markup" in err) or ("button" in err) or
-               ("parse" in err) or ("copy_text" in err))
-        if bad:
-            logger.warning("copy_text unsupported -> fallback")
-            sms_id = ""
-            for row in reply_markup.get("inline_keyboard", []):
-                for btn in row:
-                    cb = btn.get("callback_data", "")
-                    if cb.startswith("full:"):
-                        sms_id = cb.split(":", 1)[1]
-                        break
-            fallback_markup = message_buttons(text, sms_id, fallback=True)
-            payload["reply_markup"] = fallback_markup
-            return await telegram_call("sendMessage", payload)
-        raise
-
-
-async def telegram_updates(offset):
-    url = "https://api.telegram.org/bot" + BOT_TOKEN + "/getUpdates"
-    params = {"offset": offset, "timeout": 30, "limit": 100}
-    try:
-        response = await http_client.get(url, params=params, timeout=35)
-        if response.status_code == 409:
-            logger.warning("409 Conflict: doosra instance chal raha hai. 30s wait...")
-            await asyncio.sleep(30)
-            return []
-        if not response.is_success:
-            return []
-        result = response.json()
-        if not result.get("ok"):
-            return []
-        return result.get("result", [])
-    except httpx.TimeoutException:
-        return []
-    except Exception as e:
-        logger.error("Updates error: " + str(e))
-        return []
-
-
-async def get_full_message_alert(conn, sms_id):
-    msg = await get_message_data(conn, sms_id)
-    if not msg:
-        return None
-    otp, _, _ = extract_otp(msg["message_text"])
-    app_name, _ = detect_app(msg["message_text"])
-    return build_full_message_alert(
-        message_text=msg["message_text"],
-        otp=otp,
-        app_name=app_name,
-        country_code=msg.get("country", "UNKNOWN"),
-        number=mask_number(msg.get("raw_num", "")),
-        dt=msg.get("dt", ""),
-    )
-
-
-# ═══════════════════════════════════════════════════════
-# SECURITY (Intruder + Block)
-# ═══════════════════════════════════════════════════════
-
-async def load_blocked_users(conn):
-    global blocked_users
-    async with conn.execute("SELECT user_id FROM blocked_users") as c:
-        rows = await c.fetchall()
-        blocked_users = {str(r["user_id"]) for r in rows}
-    logger.info("Blocked users: " + str(len(blocked_users)))
-
-
-async def log_intruder(conn, user_id, username, first_name, action):
-    try:
-        await conn.execute(
-            "INSERT INTO intruders(user_id, username, first_name, action, seen_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (str(user_id), str(username or ""), str(first_name or ""),
-             str(action), datetime.now(timezone.utc).isoformat()),
-        )
-        await conn.commit()
-    except Exception as e:
-        logger.warning("Intruder log failed: " + str(e))
-
-
-async def notify_owner_intrusion(conn, user_id, username, first_name, action):
-    try:
-        text = "\n".join([
-            "\U0001F6A8 <b>UNAUTHORIZED ATTEMPT</b>",
-            DIV_SHORT,
-            E_USER + " <b>ID:</b> <code>" + str(user_id) + "</code>",
-            "\U0001F4DB <b>User:</b> @" + escape_html(username or "N/A"),
-            E_TAG + " <b>Name:</b> " + escape_html(first_name or "N/A"),
-            E_BOLT + " <b>Action:</b> <code>" + escape_html(action) + "</code>",
-            E_CLOCK + " <b>Time:</b> " + pkt_time() + " PKT",
-        ])
-        await telegram_call("sendMessage", {
-            "chat_id": TELEGRAM_OWNER_ID, "text": text, "parse_mode": "HTML",
-        })
-    except Exception as e:
-        logger.warning("Owner notify failed: " + str(e))
-
-
-async def block_user(conn, user_id, username=""):
-    global blocked_users
-    try:
-        await conn.execute(
-            "INSERT OR IGNORE INTO blocked_users(user_id, username, blocked_at) "
-            "VALUES (?, ?, ?)",
-            (str(user_id), str(username or ""), datetime.now(timezone.utc).isoformat()),
-        )
-        await conn.commit()
-        blocked_users.add(str(user_id))
-        return True
-    except Exception:
-        return False
-
-
-async def unblock_user(conn, user_id):
-    global blocked_users
-    try:
-        await conn.execute("DELETE FROM blocked_users WHERE user_id = ?", (str(user_id),))
-        await conn.commit()
-        blocked_users.discard(str(user_id))
-        return True
-    except Exception:
-        return False
-
-
-async def get_blocked_list(conn):
-    async with conn.execute(
-        "SELECT user_id, username, blocked_at FROM blocked_users ORDER BY blocked_at DESC"
-    ) as c:
-        rows = await c.fetchall()
-    return [dict(r) for r in rows]
-
-
-async def get_intruders(conn, limit=20):
-    async with conn.execute(
-        "SELECT user_id, username, first_name, action, seen_at "
-        "FROM intruders ORDER BY id DESC LIMIT ?", (limit,)
-    ) as c:
-        rows = await c.fetchall()
-    return [dict(r) for r in rows]
-
-
-# ═══════════════════════════════════════════════════════
-# FORWARD LOOP
-# ═══════════════════════════════════════════════════════
-
-async def forward_loop(forward_event: asyncio.Event) -> None:
-    global runtime_last_error, runtime_last_poll
-    conn = await init_db()
-    try:
-        while True:
-            try:
-                runtime_last_poll = datetime.now(timezone.utc).isoformat()
-                last_dt = await state_value(conn, "last_sms_dt")
-
-                logger.info("-" * 50)
-                logger.info("Poll @ " + runtime_last_poll)
-                logger.info("Last DT: " + (last_dt or "None"))
-
-                messages = await fetch_all_messages(last_dt)
-
-                if last_dt:
-                    messages = [m for m in messages if str(m.get("dt", "")) > last_dt]
-
-                if not messages:
-                    logger.info("No new SMS")
-                else:
-                    logger.info("Processing " + str(len(messages)) + " messages")
-
-                    newest_dt = ""
-                    for m in messages:
-                        d = str(m.get("dt", ""))
-                        if d > newest_dt:
-                            newest_dt = d
-
-                    for message in messages:
-                        sms_id = generate_sms_id(message)
-                        claimed = await claim_message(conn, sms_id)
-                        if not claimed:
-                            continue
-
-                        raw_num = str(message.get("num", ""))
-                        cli = str(message.get("cli", ""))
-                        msg_text = str(message.get("message", ""))
-                        payout = str(message.get("payout", "0"))
-                        dt = str(message.get("dt", ""))
-
-                        app_name, _ = detect_app(msg_text)
-                        country_code = detect_country_code(raw_num)
-                        otp, _, _ = extract_otp(msg_text)
-
-                        await save_message_data(
-                            conn, sms_id, raw_num, cli, msg_text,
-                            payout, dt, app_name, country_code, otp,
-                        )
-
-                        display_text = sms_text(message, masked=True)
-                        markup = message_buttons(msg_text, sms_id)
-
-                        try:
-                            await send_group_message(display_text, markup)
-                            await mark_sent(conn, sms_id)
-                            logger.info("Sent " + sms_id[:40])
-                        except Exception as send_err:
-                            logger.error("Send failed: " + str(send_err))
-                            continue
-
-                        await asyncio.sleep(0.5)
-
-                    if newest_dt:
-                        try:
-                            dt_obj = datetime.strptime(
-                                newest_dt, "%Y-%m-%d %H:%M:%S"
-                            ) + timedelta(seconds=1)
-                            new_dt = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
-                        except Exception:
-                            new_dt = newest_dt
-                        await set_state(conn, "last_sms_dt", new_dt)
-                        logger.info("Advanced last_dt -> " + new_dt)
-
-                runtime_last_error = None
-
-            except Exception as error:
-                runtime_last_error = str(error)
-                logger.error("Forward error: " + runtime_last_error)
-
-            try:
-                await asyncio.wait_for(forward_event.wait(), timeout=POLL_SECONDS)
-                forward_event.clear()
-            except asyncio.TimeoutError:
-                pass
-    finally:
-        await conn.close()
-
-
-# ═══════════════════════════════════════════════════════
-# COMMAND LOOP
-# ═══════════════════════════════════════════════════════
-
-async def command_loop(forward_event: asyncio.Event) -> None:
-    conn = await init_db()
-    offset = int(await state_value(conn, "telegram_update_offset") or "0")
-    await load_blocked_users(conn)
-
-    try:
-        while True:
-            try:
-                updates = await telegram_updates(offset)
-                for update in updates:
-                    update_id = int(update.get("update_id", 0))
-                    offset = max(offset, update_id + 1)
-                    await set_state(conn, "telegram_update_offset", str(offset))
-
-                    message = update.get("message", {})
-                    chat = message.get("chat", {})
-                    callback = update.get("callback_query")
-
-                    sender = callback.get("from", {}) if callback else message.get("from", {})
-                    sender_id = sender.get("id")
-                    text = str(message.get("text", ""))
-
-                    if str(sender_id) in blocked_users:
-                        continue
-
-                    # ═══ BUTTONS — EVERYONE ═══
-                    if callback:
-                        data = str(callback.get("data", ""))
-                        callback_id = callback.get("id", "")
-                        if not callback_id:
-                            continue
-
-                        if data.startswith("full:"):
-                            sms_id = data.split(":", 1)[1]
-                            alert = await get_full_message_alert(conn, sms_id)
-                            if not alert:
-                                alert = "\u274C Message expired."
-                            try:
-                                await telegram_call("answerCallbackQuery", {
-                                    "callback_query_id": callback_id,
-                                    "text": alert[:200],
-                                    "show_alert": True,
-                                })
-                            except Exception as e:
-                                logger.warning("Callback failed: " + str(e))
-
-                        elif data.startswith("otp:"):
-                            otp = data.split(":", 1)[1]
-                            alert = "\u274C No OTP found." if otp == "none" else "\U0001F4CB OTP: " + otp
-                            try:
-                                await telegram_call("answerCallbackQuery", {
-                                    "callback_query_id": callback_id,
-                                    "text": alert,
-                                    "show_alert": True,
-                                })
-                            except Exception:
-                                pass
-                        continue
-
-                    # ═══ COMMANDS — OWNER ONLY ═══
-                    if not is_owner(sender_id):
-                        action = "cmd:" + text[:40]
-                        await log_intruder(
-                            conn, sender_id,
-                            sender.get("username", ""),
-                            sender.get("first_name", ""),
-                            action,
-                        )
-                        last_notify = await state_value(conn, "last_intrusion_notify")
-                        should_notify = True
-                        if last_notify:
-                            try:
-                                if (datetime.now(timezone.utc) -
-                                    datetime.fromisoformat(last_notify)).total_seconds() < 60:
-                                    should_notify = False
-                            except Exception:
-                                pass
-                        if should_notify:
-                            await notify_owner_intrusion(
-                                conn, sender_id,
-                                sender.get("username", ""),
-                                sender.get("first_name", ""),
-                                action,
-                            )
-                            await set_state(
-                                conn, "last_intrusion_notify",
-                                datetime.now(timezone.utc).isoformat()
-                            )
-                        continue
-
-                    if chat.get("type") != "private":
-                        continue
-
-                    cmd = text.strip().split(maxsplit=1)[0].split("@")[0].lower()
-
-                    if cmd == "/start":
-                        start_lines = [
-                            E_CROWN + " <b>Owner Panel</b>",
-                            DIVIDER,
-                            E_BOT + " <b>SMS Forwarder Bot v18</b>",
-                            E_GREEN + " <b>Status:</b> Online & Secured",
-                            "",
-                            E_USER + " <b>Owner:</b> <code>" + str(TELEGRAM_OWNER_ID) + "</code>",
-                            E_MEGA + " <b>Group:</b> <code>" + escape_html(TELEGRAM_GROUP_ID) + "</code>",
-                            E_CLOCK + " <b>PKT:</b> " + pkt_time(),
-                            "",
-                            E_KEY + " <b>Commands</b>",
-                            "\u2022 /status \u2014 Bot status",
-                            "\u2022 /stats \u2014 Statistics",
-                            "\u2022 /analytics \u2014 Deep insights",
-                            "\u2022 /export \u2014 CSV export",
-                            "\u2022 /reset \u2014 Reset cursor",
-                            "\u2022 /forwardnow \u2014 Force poll",
-                            "\u2022 /cleanup \u2014 Delete old",
-                            "\u2022 /addapi KEY \u2014 Add API",
-                            "\u2022 /remapi KEY \u2014 Remove API",
-                            "\u2022 /apilist \u2014 List APIs",
-                            "",
-                            E_SHIELD + " <b>Security</b>",
-                            "\u2022 /intruders \u2014 Access attempts",
-                            "\u2022 /blocked \u2014 Blocked list",
-                            "\u2022 /block ID \u2014 Block user",
-                            "\u2022 /unblock ID \u2014 Unblock",
-                        ]
-                        await telegram_call("sendMessage", {
-                            "chat_id": chat["id"],
-                            "text": "\n".join(start_lines),
-                            "parse_mode": "HTML",
-                        })
-
-                    elif cmd == "/status":
-                        status = await build_status_text(conn, runtime_last_error)
-                        await telegram_call("sendMessage", {
-                            "chat_id": chat["id"], "text": status, "parse_mode": "HTML",
-                        })
-
-                    elif cmd == "/stats":
-                        st = await build_stats_text(conn)
-                        await telegram_call("sendMessage", {
-                            "chat_id": chat["id"], "text": st, "parse_mode": "HTML",
-                        })
-
-                    elif cmd == "/analytics":
-                        an = await build_analytics_text(conn)
-                        await telegram_call("sendMessage", {
-                            "chat_id": chat["id"], "text": an, "parse_mode": "HTML",
-                        })
-
-                    elif cmd == "/export":
-                        csv_data = await export_csv(conn)
-                        if not csv_data:
-                            await telegram_call("sendMessage", {
-                                "chat_id": chat["id"], "text": "\u274C No data.",
-                            })
-                            continue
-                        try:
-                            await http_client.post(
-                                "https://api.telegram.org/bot" + BOT_TOKEN + "/sendDocument",
-                                data={"chat_id": chat["id"], "caption": "\U0001F4C1 SMS Export"},
-                                files={"document": ("sms_export.csv", csv_data, "text/csv")},
-                                timeout=60,
-                            )
-                        except Exception as e:
-                            logger.error("Export failed: " + str(e))
-
-                    elif cmd == "/reset":
-                        await set_state(conn, "last_sms_dt", "")
-                        await telegram_call("sendMessage", {
-                            "chat_id": chat["id"],
-                            "text": "\u2705 Reset done. Bot re-fetch karega.",
-                            "parse_mode": "HTML",
-                        })
-
-                    elif cmd == "/forwardnow":
-                        await telegram_call("sendMessage", {
-                            "chat_id": chat["id"], "text": "\U0001F680 Triggered",
-                        })
-                        forward_event.set()
-
-                    elif cmd == "/cleanup":
-                        deleted = await cleanup_old_records(conn, CLEANUP_DAYS)
-                        await telegram_call("sendMessage", {
-                            "chat_id": chat["id"],
-                            "text": "\U0001F9F9 Cleaned: " + str(deleted) + " records",
-                        })
-
-                    elif cmd == "/addapi":
-                        parts = text.strip().split()
-                        if len(parts) < 2:
-                            await telegram_call("sendMessage", {
-                                "chat_id": chat["id"],
-                                "text": "\u274C Usage: /addapi YOUR_KEY",
-                            })
-                            continue
-                        api_key = parts[1]
-                        if await add_api_key(conn, api_key):
-                            await load_api_keys(conn)
-                            await telegram_call("sendMessage", {
-                                "chat_id": chat["id"],
-                                "text": "\u2705 API Added: <code>" + escape_html(api_key[:20]) + "...</code>",
-                                "parse_mode": "HTML",
-                            })
-                        else:
-                            await telegram_call("sendMessage", {
-                                "chat_id": chat["id"], "text": "\u274C Already exists.",
-                            })
-
-                    elif cmd == "/remapi":
-                        parts = text.strip().split()
-                        if len(parts) < 2:
-                            continue
-                        if await remove_api_key(conn, parts[1]):
-                            await load_api_keys(conn)
-                            await telegram_call("sendMessage", {
-                                "chat_id": chat["id"], "text": "\u2705 API Removed",
-                            })
-
-                    elif cmd == "/apilist":
-                        keys = await get_all_api_keys(conn)
-                        cur = get_current_api_key()
-                        lines = [E_KEY + " <b>API Keys</b>", DIVIDER]
-                        for k in keys:
-                            mark = E_GREEN + " ACTIVE" if k["api_key"] == cur else E_GLOBE + " standby"
-                            lines.append(mark + " <code>" + escape_html(k["api_key"][:20]) + "...</code>")
-                        await telegram_call("sendMessage", {
-                            "chat_id": chat["id"], "text": "\n".join(lines), "parse_mode": "HTML",
-                        })
-
-                    elif cmd == "/intruders":
-                        rows = await get_intruders(conn, 20)
-                        if not rows:
-                            txt = E_GREEN + " No intruders. Bot secure."
-                        else:
-                            lines = ["\U0001F6A8 <b>Recent Intruders</b>", DIV_SHORT]
-                            for r in rows[:15]:
-                                lines.append(E_USER + " <code>" + str(r["user_id"]) + "</code>")
-                                lines.append("   @" + escape_html(r.get("username") or "N/A"))
-                                lines.append("   \u26A1 <code>" + escape_html(str(r.get("action"))[:40]) + "</code>")
-                            txt = "\n".join(lines)
-                        await telegram_call("sendMessage", {
-                            "chat_id": chat["id"], "text": txt, "parse_mode": "HTML",
-                        })
-
-                    elif cmd == "/blocked":
-                        rows = await get_blocked_list(conn)
-                        if not rows:
-                            txt = E_GREEN + " No blocked users."
-                        else:
-                            lines = ["\U0001F6AB <b>Blocked Users</b>", DIV_SHORT]
-                            for r in rows[:20]:
-                                lines.append(E_USER + " <code>" + str(r["user_id"]) + "</code>")
-                            txt = "\n".join(lines)
-                        await telegram_call("sendMessage", {
-                            "chat_id": chat["id"], "text": txt, "parse_mode": "HTML",
-                        })
-
-                    elif cmd == "/block":
-                        parts = text.strip().split()
-                        if len(parts) < 2:
-                            continue
-                        target = parts[1].strip()
-                        if is_owner(target):
-                            continue
-                        if await block_user(conn, target):
-                            await telegram_call("sendMessage", {
-                                "chat_id": chat["id"],
-                                "text": "\U0001F6AB Blocked: <code>" + escape_html(target) + "</code>",
-                                "parse_mode": "HTML",
-                            })
-
-                    elif cmd == "/unblock":
-                        parts = text.strip().split()
-                        if len(parts) < 2:
-                            continue
-                        if await unblock_user(conn, parts[1].strip()):
-                            await telegram_call("sendMessage", {
-                                "chat_id": chat["id"],
-                                "text": "\u2705 Unblocked: <code>" + escape_html(parts[1]) + "</code>",
-                                "parse_mode": "HTML",
-                            })
-
-            except Exception as error:
-                logger.error("Command error: " + str(error))
-
-            await asyncio.sleep(1)
-    finally:
-        await conn.close()
-
-
-# ═══════════════════════════════════════════════════════
-# STATUS / ANALYTICS / EXPORT BUILDERS
-# ═══════════════════════════════════════════════════════
-
-async def build_status_text(conn, last_error):
-    state_icon = E_GREEN if not last_error else E_RED
-    state_label = "Running" if not last_error else "Error"
-    err_label = last_error or "none"
-    active_key = get_current_api_key()[:20]
-    last_dt = await state_value(conn, "last_sms_dt") or "-"
-    now_label = pkt_time()
-    api_count = len(api_keys)
-
-    total_msgs = 0
-    try:
-        async with conn.execute(
-            "SELECT COUNT(*) AS c FROM forwarded_messages WHERE sent_at IS NOT NULL"
-        ) as c:
-            total_msgs = (await c.fetchone())["c"]
-    except Exception:
-        pass
-
-    lines = [
-        E_CHART + " <b>Bot Status</b>",
-        DIVIDER,
-        state_icon + " <b>State:</b> " + state_label,
-        E_KEY + " <b>APIs:</b> " + str(api_count),
-        E_OLDKEY + " <b>Active:</b> <code>" + escape_html(active_key) + "...</code>",
-        E_MEGA + " <b>Group:</b> <code>" + escape_html(TELEGRAM_GROUP_ID) + "</code>",
-        E_CLOCK + " <b>Poll:</b> " + str(POLL_SECONDS) + "s",
-        E_TIME + " <b>Last DT:</b> <code>" + escape_html(last_dt) + "</code>",
-        E_OUT + " <b>Forwarded:</b> " + str(total_msgs),
-        E_USER + " <b>Owner:</b> <code>" + str(TELEGRAM_OWNER_ID) + "</code>",
-        E_CLOCK + " <b>Now:</b> " + now_label + " PKT",
-        E_CROSS + " <b>Error:</b> <code>" + escape_html(err_label) + "</code>",
-    ]
-    return "\n".join(lines)
-
-
-async def build_stats_text(conn):
-    try:
-        db_stats = await get_db_stats(conn)
-    except Exception:
-        db_stats = {"sent": 0, "pending": 0, "total": 0, "by_app": []}
-
-    lines = [
-        E_CHART + " <b>Statistics</b>",
-        DIVIDER,
-        E_OUT + " <b>Sent:</b> " + str(db_stats["sent"]),
-        E_HOUR + " <b>Pending:</b> " + str(db_stats["pending"]),
-        E_FILE + " <b>Total:</b> " + str(db_stats["total"]),
-        "",
-        E_MSG + " <b>Top Apps:</b>",
-    ]
-    by_app = db_stats.get("by_app", [])
-    if not by_app:
-        lines.append("   <i>None yet</i>")
-    else:
-        for row in by_app[:5]:
-            app = row.get("app") or "unknown"
-            logo = APP_LOGOS.get(app, APP_LOGOS["default"])
-            lines.append("   " + logo + " " + str(app).upper() + ": <b>" + str(row.get("c", 0)) + "</b>")
-
-    lines.append("")
-    lines.append(E_DB + " <code>" + escape_html(DATABASE_FILE) + "</code>")
-    return "\n".join(lines)
-
-
-async def build_analytics_text(conn):
-    try:
-        async with conn.execute(
-            "SELECT COUNT(*) AS c FROM forwarded_messages WHERE sent_at IS NOT NULL"
-        ) as c:
-            total_sent = (await c.fetchone())["c"]
-
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        async with conn.execute(
-            "SELECT COUNT(*) AS c FROM forwarded_messages "
-            "WHERE sent_at IS NOT NULL AND dt LIKE ?", (today + "%",)
-        ) as c:
-            today_sent = (await c.fetchone())["c"]
-
-        async with conn.execute(
-            "SELECT country, COUNT(*) AS c FROM forwarded_messages "
-            "WHERE sent_at IS NOT NULL AND country IS NOT NULL "
-            "GROUP BY country ORDER BY c DESC LIMIT 5"
-        ) as c:
-            countries = await c.fetchall()
-
-        async with conn.execute(
-            "SELECT COALESCE(app,'unknown') AS app, COUNT(*) AS c "
-            "FROM forwarded_messages WHERE sent_at IS NOT NULL "
-            "GROUP BY COALESCE(app,'unknown') ORDER BY c DESC LIMIT 5"
-        ) as c:
-            apps = await c.fetchall()
-
-        async with conn.execute(
-            "SELECT COUNT(*) AS c FROM forwarded_messages "
-            "WHERE sent_at IS NOT NULL AND otp != 'N/A' AND otp IS NOT NULL"
-        ) as c:
-            otp_count = (await c.fetchone())["c"]
-
-        try:
-            async with conn.execute("SELECT COUNT(*) AS c FROM intruders") as c:
-                intruder_count = (await c.fetchone())["c"]
-        except Exception:
-            intruder_count = 0
-
-        lines = [
-            E_CHART + " <b>Analytics</b>",
-            DIVIDER,
-            E_OUT + " <b>Total:</b> " + str(total_sent),
-            E_CAL + " <b>Today:</b> " + str(today_sent),
-            E_KEY + " <b>OTPs:</b> " + str(otp_count),
-            "\U0001F6A8 <b>Intruders:</b> " + str(intruder_count),
-            "",
-            E_GLOBE + " <b>Top Countries:</b>",
-        ]
-        if countries:
-            for row in countries:
-                code = row["country"] or "UNKNOWN"
-                flag, name = COUNTRIES.get(code, (E_GLOBE, code))
-                lines.append("   " + flag + " " + name + ": <b>" + str(row["c"]) + "</b>")
-        else:
-            lines.append("   <i>None</i>")
-
-        lines.append("")
-        lines.append(E_MSG + " <b>Top Apps:</b>")
-        if apps:
-            for row in apps:
-                app = row["app"] or "unknown"
-                logo = APP_LOGOS.get(app, APP_LOGOS["default"])
-                lines.append("   " + logo + " " + str(app).upper() + ": <b>" + str(row["c"]) + "</b>")
-        else:
-            lines.append("   <i>None</i>")
-
-        return "\n".join(lines)
-    except Exception as e:
-        return "\u274C Analytics error: " + str(e)
-
-
-async def export_csv(conn):
-    try:
-        async with conn.execute(
-            "SELECT dt, raw_num, country, app, otp, payout, message_text "
-            "FROM forwarded_messages WHERE sent_at IS NOT NULL "
-            "ORDER BY dt DESC LIMIT 5000"
-        ) as c:
-            rows = await c.fetchall()
-        if not rows:
-            return None
-
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(["Date/Time", "Number", "Country", "App", "OTP", "Payout", "Message"])
-        for r in rows:
-            writer.writerow([
-                r["dt"] or "", r["raw_num"] or "", r["country"] or "",
-                r["app"] or "", r["otp"] or "", r["payout"] or "",
-                (r["message_text"] or "").replace("\n", " "),
-            ])
-        return output.getvalue().encode("utf-8")
-    except Exception as e:
-        logger.error("CSV export error: " + str(e))
-        return None
-
-
-# ═══════════════════════════════════════════════════════
-# SETUP + MAIN
-# ═══════════════════════════════════════════════════════
-
-async def load_bot_username():
-    global BOT_USERNAME
-    try:
-        response = await telegram_call("getMe", {})
-        if response.get("ok"):
-            BOT_USERNAME = response["result"]["username"]
-            logger.info("Bot: @" + BOT_USERNAME)
-    except Exception as e:
-        logger.error("getMe failed: " + str(e))
-
-
-async def main() -> None:
-    global http_client
-
-    print("=" * 60)
-    print("Ultra SMS -> Telegram Forwarder Bot v18 - Final Premium")
-    print("=" * 60)
-
-    forward_event = asyncio.Event()
-    http_client = httpx.AsyncClient(
-        http2=False,
-        limits=httpx.Limits(max_connections=10),
-    )
-
-    conn = await init_db()
-    try:
-        await load_api_keys(conn)
-        await load_blocked_users(conn)
-        await load_bot_username()
-        last_dt = await state_value(conn, "last_sms_dt")
-
-        logger.info("Bot: @" + BOT_USERNAME)
-        logger.info("Owner: " + str(TELEGRAM_OWNER_ID))
-        logger.info("Group: " + TELEGRAM_GROUP_ID)
-        logger.info("Last DT: " + (last_dt or "None"))
-        logger.info("APIs: " + str(len(api_keys)))
-        logger.info("=" * 60)
-        logger.info("Started - Owner Commands | Public Buttons")
-        logger.info("=" * 60)
-
-        try:
-            startup_lines = [
-                E_CROWN + " <b>Bot Started</b>",
-                DIV_SHORT,
-                E_GREEN + " <b>Status:</b> Online",
-                E_LOCK + " <b>Mode:</b> Owner-Only Commands",
-                E_MEGA + " <b>Group:</b> Buttons public",
-                E_CLOCK + " <b>PKT:</b> " + pkt_time(),
-            ]
-            await telegram_call("sendMessage", {
-                "chat_id": TELEGRAM_OWNER_ID,
-                "text": "\n".join(startup_lines),
-                "parse_mode": "HTML",
-            })
-        except Exception as e:
-            logger.warning("Startup msg failed: " + str(e))
-
-        await asyncio.gather(
-            forward_loop(forward_event),
-            command_loop(forward_event),
-        )
-
-    except KeyboardInterrupt:
-        logger.info("Stopped")
-    except Exception as e:
-        logger.error("Fatal: " + str(e))
-    finally:
-        await conn.close()
-        if http_client:
-            await http_client.aclose()
-
+            logging.warning(f"reminder_loop: {e}")
+
+# ==========================================================
+#                    🚀 STARTUP
+# ==========================================================
+async def main():
+    global OWNER_GROUP_ID
+    stored = get_setting("owner_group_id")
+    if stored:
+        try: OWNER_GROUP_ID = int(stored)
+        except Exception: pass
+    load_owners()
+    logging.info("🤖 Bot started.")
+    await bot.delete_webhook(drop_pending_updates=True)
+    asyncio.create_task(backup_loop())
+    asyncio.create_task(reminder_loop())
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
