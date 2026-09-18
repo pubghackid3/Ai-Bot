@@ -1,6 +1,7 @@
 # ==========================================================
-#   👑 PROFESSIONAL TELEGRAM BOT — COLOR EDITION
+#   👑 PROFESSIONAL TELEGRAM BOT — FULL FIXED
 #   Owner: @Ghost_Code_404  |  Channel: @ToolsByRehan
+#   No animations — instant response
 # ==========================================================
 import sys, subprocess, importlib
 
@@ -449,112 +450,11 @@ class TicketFlow(StatesGroup):
     message=State(); reply=State()
 
 # ==========================================================
-#                🎬 ANIMATIONS (Clean text-based)
+#       🎨 COLORFUL KEYBOARDS (Telegram auto-colors)
 # ==========================================================
-DOTS = ["⏺", "⏺⏺", "⏺⏺⏺", "⏺⏺⏺⏺", "⏺⏺⏺⏺⏺"]
-BARS = ["▱▱▱▱▱▱▱▱▱▱","▰▱▱▱▱▱▱▱▱▱","▰▰▱▱▱▱▱▱▱▱","▰▰▰▱▱▱▱▱▱▱",
-        "▰▰▰▰▱▱▱▱▱▱","▰▰▰▰▰▱▱▱▱▱","▰▰▰▰▰▰▱▱▱▱","▰▰▰▰▰▰▰▱▱▱",
-        "▰▰▰▰▰▰▰▰▱▱","▰▰▰▰▰▰▰▰▰▱","▰▰▰▰▰▰▰▰▰▰"]
-
-async def anim_loading(chat_id, title, subtitle="", delay=0.35, final_text=None, reply_markup=None):
-    try: msg = await bot.send_message(chat_id, f"<b>{title}</b>\n{subtitle}\n{DOTS[0]}")
-    except Exception: return None
-    for d in DOTS[1:]:
-        await asyncio.sleep(delay)
-        try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
-                text=f"<b>{title}</b>\n{subtitle}\n{d}")
-        except Exception: break
-    if final_text:
-        await asyncio.sleep(0.25)
-        try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
-                text=final_text, reply_markup=reply_markup)
-        except Exception: pass
-    return msg
-
-async def anim_edit_loading(call, title, subtitle="", delay=0.3, final_text=None, reply_markup=None):
-    try: await call.message.edit_text(f"<b>{title}</b>\n{subtitle}\n{DOTS[0]}")
-    except Exception: return
-    for d in DOTS[1:]:
-        await asyncio.sleep(delay)
-        try: await call.message.edit_text(f"<b>{title}</b>\n{subtitle}\n{d}")
-        except Exception: break
-    if final_text:
-        await asyncio.sleep(0.2)
-        try: await call.message.edit_text(final_text, reply_markup=reply_markup)
-        except Exception: pass
-
-async def anim_progress_bar(chat_id, title, delay=0.28, final_text=None, reply_markup=None):
-    try: msg = await bot.send_message(chat_id, f"<b>{title}</b>\n\n{BARS[0]}  0%")
-    except Exception: return None
-    for i in range(1, len(BARS)):
-        await asyncio.sleep(delay)
-        pct = int((i / (len(BARS) - 1)) * 100)
-        try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
-                text=f"<b>{title}</b>\n\n{BARS[i]}  {pct}%")
-        except Exception: break
-    if final_text:
-        await asyncio.sleep(0.25)
-        try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
-                text=final_text, reply_markup=reply_markup)
-        except Exception: pass
-    return msg
-
-async def anim_success_msg(chat_id, base_text, reply_markup=None):
-    frames = ["✅", "✅  <b>Done</b>", "✅  <b>Done</b>  ✨"]
-    try: msg = await bot.send_message(chat_id, frames[0])
-    except Exception: return
-    for f in frames[1:]:
-        await asyncio.sleep(0.28)
-        try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, text=f)
-        except Exception: break
-    await asyncio.sleep(0.25)
-    try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
-            text=base_text, reply_markup=reply_markup)
-    except Exception: pass
-
-async def anim_error_msg(chat_id, base_text):
-    frames = [f"❌  {base_text}", f"❌   {base_text}", f"❌  {base_text}"]
-    try: msg = await bot.send_message(chat_id, frames[0])
-    except Exception: return
-    for f in frames[1:]:
-        await asyncio.sleep(0.2)
-        try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, text=f)
-        except Exception: break
-
-async def anim_welcome(chat_id, welcome_text, reply_markup=None):
-    try: msg = await bot.send_message(chat_id, DOTS[0])
-    except Exception: return
-    for d in DOTS[1:]:
-        await asyncio.sleep(0.22)
-        try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, text=d)
-        except Exception: break
-    await asyncio.sleep(0.25)
-    try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
-            text=welcome_text, reply_markup=reply_markup)
-    except Exception:
-        try: await bot.send_message(chat_id, welcome_text, reply_markup=reply_markup)
-        except Exception: pass
-
-async def anim_celebrate_msg(chat_id, base_text="", reply_markup=None):
-    frames = ["🎉", "🎉 🎊", "🎉 🎊 ✨", "🎉 🎊 ✨ ⭐"]
-    try: msg = await bot.send_message(chat_id, frames[0])
-    except Exception: return
-    for f in frames[1:]:
-        await asyncio.sleep(0.2)
-        try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, text=f)
-        except Exception: break
-    if base_text:
-        await asyncio.sleep(0.25)
-        try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id,
-                text=base_text, reply_markup=reply_markup)
-        except Exception: pass
-
-# ==========================================================
-#       🎨 COLORFUL KEYBOARDS (1 emoji = 1 color)
-# ==========================================================
-# Color map (Telegram auto-colors from first emoji):
+# Emoji → Color mapping (Telegram auto):
 # ✅ green · ❌ red · 📱 blue · 💰 gold · 🎁 pink
-# 🛎 orange · ⚙️ gray · 🎫 orange · ⚡ yellow
+# 🛎 orange · ⚙️ gray · 🎫 orange · 📢 blue · 🔙 gray
 
 def lang_kb():
     return IKM(inline_keyboard=[
@@ -567,7 +467,6 @@ def lang_kb():
 
 
 def user_menu(lang, uid=None):
-    """Main Dashboard — each button gets a distinct color"""
     return IKM(inline_keyboard=[
         [IKB(text="📱  My Accounts",       callback_data="menu_accounts")],   # blue
         [IKB(text="📦  Orders",            callback_data="menu_orders")],     # blue
@@ -805,8 +704,9 @@ async def cmd_start(m: types.Message, state: FSMContext):
             "Then tap Verify button below.",
             reply_markup=force_join_kb(missing))
         return
-    await anim_welcome(m.chat.id, welcome + "\n\n" + t(lg,"menu_title"),
-                       reply_markup=user_menu(lg, uid=m.from_user.id))
+    # No animation — direct message
+    await m.answer(welcome + "\n\n" + t(lg,"menu_title"),
+                   reply_markup=user_menu(lg, uid=m.from_user.id))
 
 @dp.callback_query(F.data == "verify_join")
 async def verify_join(c: types.CallbackQuery):
@@ -815,14 +715,13 @@ async def verify_join(c: types.CallbackQuery):
         await c.answer("❌ Pehle channel join karein!", show_alert=True); return
     lg = get_lang(c.from_user.id)
     welcome = get_welcome(lg, c.from_user.first_name)
-    await anim_edit_loading(c, "Verifying", "", delay=0.3,
-        final_text=("✅ <b>Verified Successfully!</b>\n\n"
-                    "Opening dashboard..."))
-    await asyncio.sleep(0.5)
+    # No animation — direct
     try:
         await c.message.edit_text(welcome + "\n\n" + t(lg,"menu_title"),
                                   reply_markup=user_menu(lg, uid=c.from_user.id))
-    except Exception: pass
+    except Exception:
+        await c.message.answer(welcome + "\n\n" + t(lg,"menu_title"),
+                               reply_markup=user_menu(lg, uid=c.from_user.id))
     await c.answer("✅")
 
 @dp.callback_query(F.data.startswith("setlang:"))
@@ -857,9 +756,8 @@ async def cmd_lang(m: types.Message):
 async def cb_menu(c: types.CallbackQuery, state: FSMContext):
     await state.clear()
     lg = get_lang(c.from_user.id)
-    await anim_edit_loading(c, "Loading dashboard", "", delay=0.25,
-        final_text=t(lg,"menu_title"),
-        reply_markup=user_menu(lg, uid=c.from_user.id))
+    await c.message.edit_text(t(lg,"menu_title"),
+                              reply_markup=user_menu(lg, uid=c.from_user.id))
     await c.answer()
 
 @dp.callback_query(F.data == "cancel")
@@ -881,22 +779,22 @@ async def cb_cancel(c: types.CallbackQuery, state: FSMContext):
 async def cb_menu_accounts(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
     accs = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?", (c.from_user.id,)).fetchone()[0]
-    await anim_edit_loading(c, "Loading accounts", "", delay=0.28,
-        final_text=(f"📱 <b>My Accounts</b>\n━━━━━━━━━━━━━━━━━━━━\n"
-                    f"Total: <b>{accs}</b> account(s) linked.\n\n"
-                    f"<b>What would you like to do?</b>"),
+    await c.message.edit_text(
+        f"📱 <b>My Accounts</b>\n━━━━━━━━━━━━━━━━━━━━\n"
+        f"Total: <b>{accs}</b> account(s) linked.\n\n"
+        f"<b>What would you like to do?</b>",
         reply_markup=accounts_menu(lg, c.from_user.id))
     await c.answer()
 
 @dp.callback_query(F.data == "menu_orders")
 async def cb_menu_orders(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
-    await anim_edit_loading(c, "Loading orders", "", delay=0.28,
-        final_text=("📦 <b>Orders</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-                    "Submit new orders or view your history.\n\n"
-                    "<b>Paid Order</b> — uses your accounts\n"
-                    "<b>Free Order</b> — uses your points\n\n"
-                    "<b>Choose an option:</b>"),
+    await c.message.edit_text(
+        "📦 <b>Orders</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Submit new orders or view your history.\n\n"
+        "<b>Paid Order</b> — uses your accounts\n"
+        "<b>Free Order</b> — uses your points\n\n"
+        "<b>Choose an option:</b>",
         reply_markup=orders_menu(lg, c.from_user.id))
     await c.answer()
 
@@ -905,32 +803,32 @@ async def cb_menu_wallet(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
     pts = get_points(c.from_user.id)
     members = pts // POINTS_PER_MEMBER
-    await anim_edit_loading(c, "Loading wallet", "", delay=0.28,
-        final_text=(f"💰 <b>Wallet & Points</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-                    f"💰 Balance: <b>{pts}</b> points\n"
-                    f"👥 Equals: <b>{members}</b> members\n"
-                    f"💎 Rate: <b>{POINTS_PER_MEMBER} pts = 1 member</b>\n\n"
-                    f"<b>Choose an option:</b>"),
+    await c.message.edit_text(
+        f"💰 <b>Wallet & Points</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💰 Balance: <b>{pts}</b> points\n"
+        f"👥 Equals: <b>{members}</b> members\n"
+        f"💎 Rate: <b>{POINTS_PER_MEMBER} pts = 1 member</b>\n\n"
+        f"<b>Choose an option:</b>",
         reply_markup=wallet_menu(lg, c.from_user.id))
     await c.answer()
 
 @dp.callback_query(F.data == "menu_support")
 async def cb_menu_support(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
-    await anim_edit_loading(c, "Opening support", "", delay=0.28,
-        final_text=("🛎 <b>Support & Help</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-                    "Our team is here to help:\n"
-                    "• Order issues\n• Payments\n• General questions\n\n"
-                    "<b>Typical response:</b> within a few hours"),
+    await c.message.edit_text(
+        "🛎 <b>Support & Help</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Our team is here to help:\n"
+        "• Order issues\n• Payments\n• General questions\n\n"
+        "<b>Typical response:</b> within a few hours",
         reply_markup=support_menu(lg))
     await c.answer()
 
 @dp.callback_query(F.data == "menu_settings")
 async def cb_menu_settings(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
-    await anim_edit_loading(c, "Loading settings", "", delay=0.28,
-        final_text=("⚙️ <b>Settings</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-                    "<b>Choose an option:</b>"),
+    await c.message.edit_text(
+        "⚙️ <b>Settings</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        "<b>Choose an option:</b>",
         reply_markup=settings_menu(lg))
     await c.answer()
 
@@ -1016,8 +914,8 @@ async def cb_add(c: types.CallbackQuery, state: FSMContext):
     if is_banned(c.from_user.id):
         await c.answer("🚫 Banned", show_alert=True); return
     await state.set_state(AddAcc.phone)
-    await anim_edit_loading(c, "Opening", "", delay=0.3,
-        final_text=f"{t(lg,'add_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n{t(lg,'add_guide')}",
+    await c.message.edit_text(
+        f"{t(lg,'add_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n{t(lg,'add_guide')}",
         reply_markup=cancel_kb(lg))
     await c.answer()
 
@@ -1029,10 +927,9 @@ async def acc_phone(m: types.Message, state: FSMContext):
         await m.answer(t(lg,"invalid_phone")); return
     exists = conn.execute("SELECT id FROM accounts WHERE phone=?",(phone,)).fetchone()
     if exists:
-        await anim_error_msg(m.chat.id, t(lg,"phone_used", phone=phone))
+        await m.answer(t(lg,"phone_used", phone=phone))
         await state.clear(); return
-    msg = await anim_loading(m.chat.id, "Requesting code", "", delay=0.35,
-                             final_text="Connecting to Telegram...")
+    msg = await m.answer("⏳ Connecting to Telegram...")
     client = TelegramClient(StringSession(), API_ID, API_HASH)
     try:
         await client.connect()
@@ -1047,7 +944,8 @@ async def acc_phone(m: types.Message, state: FSMContext):
             txt = "🚫 Number Banned\n\nTry another number."
         else:
             txt = f"❌ <code>{err[:200]}</code>"
-        await anim_error_msg(m.chat.id, txt)
+        try: await msg.edit_text(txt)
+        except Exception: pass
         await state.clear(); return
     CLIENTS[m.from_user.id] = client
     await state.update_data(phone=phone, phone_code_hash=sent.phone_code_hash)
@@ -1069,7 +967,7 @@ async def acc_otp(m: types.Message, state: FSMContext):
         await m.answer(t(lg,"pwd_guide"), reply_markup=cancel_kb(lg))
         await state.set_state(AddAcc.password); return
     except PhoneCodeInvalidError:
-        await anim_error_msg(m.chat.id, "Invalid code. Try again."); return
+        await m.answer("❌ Invalid code. Try again."); return
     except Exception as e:
         await m.answer(f"❌ <code>{str(e)[:200]}</code>"); return
     await finish_account(m, state, client, data["phone"], lg)
@@ -1091,7 +989,7 @@ async def finish_account(m, state, client, phone, lg):
         try: await client.disconnect()
         except Exception: pass
         CLIENTS.pop(m.from_user.id, None); await state.clear()
-        await anim_error_msg(m.chat.id, t(lg,"phone_used", phone=phone)); return
+        await m.answer(t(lg,"phone_used", phone=phone)); return
     session_str = client.session.save()
     enc = cipher.encrypt(session_str.encode())
     try:
@@ -1102,7 +1000,7 @@ async def finish_account(m, state, client, phone, lg):
         try: await client.disconnect()
         except Exception: pass
         CLIENTS.pop(m.from_user.id, None); await state.clear()
-        await anim_error_msg(m.chat.id, t(lg,"phone_used", phone=phone)); return
+        await m.answer(t(lg,"phone_used", phone=phone)); return
     log_action(m.from_user.id, "add_account", phone)
     try: await client.disconnect()
     except Exception: pass
@@ -1116,11 +1014,11 @@ async def finish_account(m, state, client, phone, lg):
         except Exception: pass
     accs_count = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?",
                               (m.from_user.id,)).fetchone()[0]
-    await anim_progress_bar(m.chat.id, "Linking your account", delay=0.25,
-        final_text=(f"✅ <b>Account Added!</b>\n━━━━━━━━━━━━━━━━━━━━\n"
-                    f"📱 <code>{phone}</code>\n"
-                    f"📊 Total: <b>{accs_count}</b>\n\n"
-                    f"👉 Now set Target for this account."),
+    await m.answer(
+        f"✅ <b>Account Added!</b>\n━━━━━━━━━━━━━━━━━━━━\n"
+        f"📱 <code>{phone}</code>\n"
+        f"📊 Total: <b>{accs_count}</b>\n\n"
+        f"👉 Now set Target for this account.",
         reply_markup=accounts_menu(lg, m.from_user.id))
 
 # ==========================================================
@@ -1195,8 +1093,8 @@ async def save_target(m: types.Message, state: FSMContext):
     if not aid: await m.answer("❌"); await state.clear(); return
     conn.execute("UPDATE accounts SET target_link=? WHERE id=?",(link, aid)); conn.commit()
     await state.clear()
-    await anim_success_msg(m.chat.id, t(lg,"target_saved",link=link),
-                           reply_markup=accounts_menu(lg, m.from_user.id))
+    await m.answer(t(lg,"target_saved",link=link),
+                   reply_markup=accounts_menu(lg, m.from_user.id))
 
 @dp.message(SetLinks.own)
 async def save_own(m: types.Message, state: FSMContext):
@@ -1208,8 +1106,8 @@ async def save_own(m: types.Message, state: FSMContext):
     if not aid: await m.answer("❌"); await state.clear(); return
     conn.execute("UPDATE accounts SET own_link=? WHERE id=?",(link, aid)); conn.commit()
     await state.clear()
-    await anim_success_msg(m.chat.id, t(lg,"own_saved",link=link),
-                           reply_markup=accounts_menu(lg, m.from_user.id))
+    await m.answer(t(lg,"own_saved",link=link),
+                   reply_markup=accounts_menu(lg, m.from_user.id))
 
 # ==========================================================
 #                📦 SUBMIT ORDER
@@ -1233,7 +1131,6 @@ async def cb_submit(c: types.CallbackQuery):
         await c.answer(); return
     accs = len(rows); rate = members_per_account()
     members = accs * rate; is_v = is_vip(c.from_user.id)
-    await anim_edit_loading(c, "Submitting your order", "", delay=0.3)
     conn.execute("INSERT INTO orders(user_id,accounts,members,order_type,priority,"
                  "status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
                  (c.from_user.id, accs, members, "paid", 1 if is_v else 0,
@@ -1259,13 +1156,13 @@ async def cb_submit(c: types.CallbackQuery):
             except Exception: pass
             await asyncio.sleep(0.3)
     delivery = get_setting("delivery_time", DEFAULT_DELIVERY)
-    await anim_celebrate_msg(c.from_user.id, base_text=(
+    await c.message.edit_text(
         "🎉 <b>Order Received!</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
         f"📦 Accounts: <b>{accs}</b>\n"
         f"👥 Members: <b>{members}</b>\n"
         f"⏱ Delivery: <b>{delivery}</b>\n"
         f"📌 Status: {t(lg,'status_pending')}\n\n"
-        "Our team will start soon!"),
+        "Our team will start soon!",
         reply_markup=IKM(inline_keyboard=[
             [IKB(text="📜  Order History", callback_data="history")],
             [IKB(text="🔙  Dashboard",     callback_data="menu")],
@@ -1278,9 +1175,9 @@ async def cb_submit(c: types.CallbackQuery):
 @dp.callback_query(F.data == "buy_members")
 async def cb_buy_members(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
-    await anim_edit_loading(c, "Loading", "", delay=0.3,
-        final_text=(f"{t(lg,'buy_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
-                    + t(lg,"buy_body", ppm=POINTS_PER_MEMBER, support=CUSTOMER_SERVICE)),
+    await c.message.edit_text(
+        f"{t(lg,'buy_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        + t(lg,"buy_body", ppm=POINTS_PER_MEMBER, support=CUSTOMER_SERVICE),
         reply_markup=IKM(inline_keyboard=[
             [IKB(text="🛎  Contact Support", url=f"https://t.me/{CUSTOMER_SERVICE}")],
             [IKB(text="💰  My Points",       callback_data="my_points")],
@@ -1313,8 +1210,8 @@ async def cb_free_order(c: types.CallbackQuery, state: FSMContext):
         await c.answer(t(lg,"free_no_points", points=pts, need=POINTS_PER_MEMBER,
                          members=1), show_alert=True); return
     await state.set_state(FreeOrder.target)
-    await anim_edit_loading(c, "Opening", "", delay=0.3,
-        final_text=f"{t(lg,'free_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n{t(lg,'free_intro')}",
+    await c.message.edit_text(
+        f"{t(lg,'free_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n{t(lg,'free_intro')}",
         reply_markup=cancel_kb(lg))
     await c.answer()
 
@@ -1325,10 +1222,10 @@ async def cb_free_trial(c: types.CallbackQuery, state: FSMContext):
         await c.answer("❌ Trial already used!", show_alert=True); return
     await state.set_state(FreeOrder.target)
     await state.update_data(trial=True)
-    await anim_edit_loading(c, "Starting trial", "", delay=0.3,
-        final_text=("🎁 <b>FREE TRIAL</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-                    f"✨ You get <b>{TRIAL_MEMBERS} members FREE</b>!\n\n"
-                    f"📖 Send your target group link:"),
+    await c.message.edit_text(
+        "🎁 <b>FREE TRIAL</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"✨ You get <b>{TRIAL_MEMBERS} members FREE</b>!\n\n"
+        f"📖 Send your target group link:",
         reply_markup=cancel_kb(lg))
     await c.answer("🎁")
 
@@ -1409,7 +1306,6 @@ async def free_confirm(c: types.CallbackQuery, state: FSMContext):
          f"TARGET: {data['target']}\nOWN: {data['own']}", now_str(), now_str()))
     conn.commit()
     oid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-    await anim_edit_loading(c, "Processing order", "", delay=0.3)
     if OWNER_GROUP_ID:
         badge = "🎁 TRIAL" if is_trial else "💎 FREE"
         try:
@@ -1422,12 +1318,12 @@ async def free_confirm(c: types.CallbackQuery, state: FSMContext):
     await state.clear()
     delivery = get_setting("delivery_time", DEFAULT_DELIVERY)
     remaining = get_points(c.from_user.id)
-    await anim_celebrate_msg(c.from_user.id, base_text=(
+    await c.message.edit_text(
         "🎉 <b>Order Placed!</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
         f"👥 Members: <b>{members}</b>\n"
         f"💰 Used: <b>{cost} pts</b>\n"
         f"💰 Remaining: <b>{remaining}</b>\n"
-        f"⏱ Delivery: <b>{delivery}</b>"),
+        f"⏱ Delivery: <b>{delivery}</b>",
         reply_markup=IKM(inline_keyboard=[
             [IKB(text="💰  My Points",  callback_data="my_points")],
             [IKB(text="🔙  Dashboard",  callback_data="menu")],
@@ -1476,22 +1372,22 @@ async def cmd_redeem(m: types.Message):
     row = conn.execute("SELECT points,max_uses,uses FROM coupons WHERE code=?",
                        (code,)).fetchone()
     if not row:
-        await anim_error_msg(m.chat.id, "Invalid code!"); return
+        await m.answer("❌ Invalid code!"); return
     pts, max_u, used = row
     if used >= max_u:
-        await anim_error_msg(m.chat.id, "Code expired!"); return
+        await m.answer("❌ Code expired!"); return
     already = conn.execute("SELECT id FROM coupon_uses WHERE code=? AND user_id=?",
                            (code, m.from_user.id)).fetchone()
     if already:
-        await anim_error_msg(m.chat.id, "Already used!"); return
+        await m.answer("❌ Already used!"); return
     conn.execute("UPDATE coupons SET uses=uses+1 WHERE code=?", (code,))
     conn.execute("INSERT INTO coupon_uses(code,user_id,used_at) VALUES(?,?,?)",
                  (code, m.from_user.id, now_str()))
     add_points(m.from_user.id, pts); conn.commit()
-    await anim_celebrate_msg(m.chat.id, base_text=(
+    await m.answer(
         "🎉 <b>Coupon Redeemed!</b>\n━━━━━━━━━━━━━━━━━━━━\n"
         f"🎟 <code>{code}</code>\n💰 +{pts} pts\n"
-        f"💰 Total: <b>{get_points(m.from_user.id)}</b>"))
+        f"💰 Total: <b>{get_points(m.from_user.id)}</b>")
 
 # ==========================================================
 #                📜 HISTORY / HELP / TICKETS
@@ -1555,8 +1451,8 @@ async def ticket_msg(m: types.Message, state: FSMContext):
                 f"🕒 {now_str()}\n\n💬 {body}", reply_markup=kb)
         except Exception: pass
     lg = get_lang(m.from_user.id)
-    await anim_success_msg(m.chat.id, t(lg,"ticket_sent",id=tid),
-                           reply_markup=support_menu(lg))
+    await m.answer(t(lg,"ticket_sent",id=tid),
+                   reply_markup=support_menu(lg))
 
 @dp.callback_query(F.data.startswith("treply:"))
 async def ticket_reply_start(c: types.CallbackQuery, state: FSMContext):
@@ -1802,7 +1698,6 @@ async def o_stats(c: types.CallbackQuery):
 @dp.callback_query(F.data == "o_analytics")
 async def o_analytics(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
-    await anim_edit_loading(c, "Loading analytics", "", delay=0.3)
     week_ago = (datetime.date.today() - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
     tu = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
     ta = conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
@@ -1992,7 +1887,6 @@ async def send_backup(target):
 @dp.callback_query(F.data == "o_backup")
 async def o_backup(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
-    await anim_edit_loading(c, "Backing up", "", delay=0.3)
     await send_backup(c.from_user.id)
     await c.message.answer("✅ Backup sent!", reply_markup=owner_menu())
     await c.answer()
@@ -2000,8 +1894,8 @@ async def o_backup(c: types.CallbackQuery):
 @dp.message(Command("backup"))
 async def cmd_backup(m: types.Message):
     if not is_owner(m.from_user.id): return
-    await anim_loading(m.chat.id, "Backing up", "", delay=0.3)
     await send_backup(m.chat.id)
+    await m.answer("✅ Backup sent!")
 
 @dp.callback_query(F.data == "o_export")
 async def o_export(c: types.CallbackQuery):
