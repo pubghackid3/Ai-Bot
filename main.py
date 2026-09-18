@@ -1,7 +1,10 @@
 # ==========================================================
-#   👑 PROFESSIONAL TELEGRAM BOT — ANTI-CONFLICT EDITION
+#   👑 PROFESSIONAL TELEGRAM BOT — FULL FIXED
 #   Owner: @Ghost_Code_404  |  Channel: @ToolsByRehan
-#   Fixes: Single instance lock, no polling conflicts
+#   - No HTML parse errors
+#   - Colored buttons (Telegram auto-colors from emoji)
+#   - No animations
+#   - Single-instance lock
 # ==========================================================
 import sys, subprocess, importlib
 
@@ -15,7 +18,6 @@ for _pkg in ["aiogram==3.7.0", "telethon==1.36.0", "cryptography==42.0.8"]:
 
 import os, io, csv, sqlite3, datetime, logging, time, asyncio, socket
 from aiogram import Bot, Dispatcher, F, types, BaseMiddleware
-from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -58,12 +60,11 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s | %(levelname)s | %(message)s")
 
 # ==========================================================
-#          🔒 SINGLE-INSTANCE LOCK (Anti-Conflict)
+#          🔒 SINGLE-INSTANCE LOCK
 # ==========================================================
 LOCK_SOCKET = None
 
 def acquire_single_instance_lock(port=45999):
-    """Prevent multiple bot instances using a socket lock."""
     global LOCK_SOCKET
     try:
         LOCK_SOCKET = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -74,17 +75,6 @@ def acquire_single_instance_lock(port=45999):
         return True
     except OSError:
         logging.error("❌ Another instance is already running. Exiting.")
-        print("\n" + "="*60)
-        print("❌ ERROR: Another bot instance is already running!")
-        print("="*60)
-        print("This usually means:")
-        print("  • Railway has multiple replicas running")
-        print("  • Or a local copy is also running")
-        print("\nFIX:")
-        print("  1. Railway → Settings → Replicas = 1")
-        print("  2. Stop any local bot processes")
-        print("  3. Or revoke bot token via @BotFather")
-        print("="*60 + "\n")
         sys.exit(1)
 
 # ==========================================================
@@ -107,17 +97,18 @@ cipher = Fernet(FERNET_KEY)
 # ==========================================================
 #                    🤖 BOT SETUP
 # ==========================================================
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+# ⚠️ NO parse_mode — plain text only. This prevents HTML parse errors.
+bot = Bot(token=BOT_TOKEN)
 dp  = Dispatcher(storage=MemoryStorage())
 CLIENTS: dict = {}
 
 # ==========================================================
-#                    🌐 TRANSLATIONS
+#                    🌐 TRANSLATIONS (Plain text)
 # ==========================================================
 WELCOME = {
-"en": ("✨ <b>Welcome to ToolsByRehan Bot</b>\n"
+"en": ("✨ Welcome to ToolsByRehan Bot\n"
        "━━━━━━━━━━━━━━━━━━━━\n\n"
-       "👋 <b>Hello, {name}!</b>\n\n"
+       "👋 Hello, {name}!\n\n"
        "Your complete Telegram Manager.\n\n"
        "💎 Link unlimited accounts\n"
        "🎯 Set target groups\n"
@@ -125,9 +116,9 @@ WELCOME = {
        "💳 Buy members anytime\n\n"
        "━━━━━━━━━━━━━━━━━━━━\n"
        "👇 Get started below"),
-"ur": ("✨ <b>ToolsByRehan بوٹ میں خوش آمدید</b>\n"
+"ur": ("✨ ToolsByRehan بوٹ میں خوش آمدید\n"
        "━━━━━━━━━━━━━━━━━━━━\n\n"
-       "👋 <b>السلام علیکم، {name}!</b>\n\n"
+       "👋 السلام علیکم، {name}!\n\n"
        "آپ کا مکمل ٹیلیگرام منیجر۔\n\n"
        "💎 لا محدود اکاؤنٹس\n"
        "🎯 ٹارگٹ گروپ سیٹنگ\n"
@@ -135,9 +126,9 @@ WELCOME = {
        "💳 ممبرز خریدیں\n\n"
        "━━━━━━━━━━━━━━━━━━━━\n"
        "👇 نیچے سے شروع کریں"),
-"hi": ("✨ <b>ToolsByRehan बॉट में स्वागत</b>\n"
+"hi": ("✨ ToolsByRehan बॉट में स्वागत\n"
        "━━━━━━━━━━━━━━━━━━━━\n\n"
-       "👋 <b>नमस्ते, {name}!</b>\n\n"
+       "👋 नमस्ते, {name}!\n\n"
        "आपका पूरा Telegram Manager।\n\n"
        "💎 असीमित अकाउंट\n"
        "🎯 आसान टार्गेट\n"
@@ -145,9 +136,9 @@ WELCOME = {
        "💳 मेंबर खरीदें\n\n"
        "━━━━━━━━━━━━━━━━━━━━\n"
        "👇 शुरू करें"),
-"rom_ur": ("✨ <b>ToolsByRehan Bot mein Khush Aamdeed</b>\n"
+"rom_ur": ("✨ ToolsByRehan Bot mein Khush Aamdeed\n"
        "━━━━━━━━━━━━━━━━━━━━\n\n"
-       "👋 <b>Assalam-o-Alaikum, {name}!</b>\n\n"
+       "👋 Assalam-o-Alaikum, {name}!\n\n"
        "Aap ka complete Telegram Manager.\n\n"
        "💎 Unlimited accounts\n"
        "🎯 Aasan target setting\n"
@@ -155,9 +146,9 @@ WELCOME = {
        "💳 Buy members\n\n"
        "━━━━━━━━━━━━━━━━━━━━\n"
        "👇 Shuru karein"),
-"ar": ("✨ <b>مرحباً بك في بوت ToolsByRehan</b>\n"
+"ar": ("✨ مرحباً بك في بوت ToolsByRehan\n"
        "━━━━━━━━━━━━━━━━━━━━\n\n"
-       "👋 <b>مرحباً، {name}!</b>\n\n"
+       "👋 مرحباً، {name}!\n\n"
        "مدير تيليجرام الكامل.\n\n"
        "💎 اربط حسابات\n"
        "🎯 عيّن الأهداف\n"
@@ -169,128 +160,125 @@ WELCOME = {
 
 TEXTS = {
 "en": {
- "menu_title":"🏠 <b>DASHBOARD</b>\n━━━━━━━━━━━━━━━━━━━━\n👇 Choose an option",
+ "menu_title":"🏠 DASHBOARD\n━━━━━━━━━━━━━━━━━━━━\n👇 Choose an option",
  "language_set":"✅ Language set to English",
- "choose_language":"🌐 <b>Select Language</b>\n👇 Pick one:",
- "btn_back":"🔙  Back","btn_cancel":"❌  Cancel","btn_menu":"🏠  Dashboard",
- "add_title":"➕ <b>ADD ACCOUNT</b>",
- "add_guide":"📖 Send your Telegram phone number with country code.\n✍️ Example: <code>+923001234567</code>\n⚠️ Each number once.",
- "otp_guide":"📩 <b>Code sent!</b>\n✍️ Enter the code Telegram sent you.",
- "pwd_guide":"🔐 <b>2FA Password</b>\n✍️ Send your password.",
- "linked_ok":"✅ <b>Account Added</b>\n📱 <code>{phone}</code>",
- "phone_used":"❌ <b>Number Already Linked</b>\n<code>{phone}</code>",
- "target_title":"🎯 <b>SET TARGET GROUP</b>","target_guide":"📖 Send group link where members should be added.\n✍️ <code>https://t.me/yourgroup</code>",
- "target_saved":"✅ <b>Target Saved</b>\n🎯 {link}",
- "own_title":"🏠 <b>SET YOUR GROUP</b>","own_guide":"📖 Send your own group link.\n✍️ <code>https://t.me/mygroups</code>",
- "own_saved":"✅ <b>Own Group Saved</b>\n🏠 {link}",
- "my_title":"📊 <b>MY ACCOUNTS</b>","no_accounts":"❌ No accounts yet.",
- "submit_title":"📦 <b>SUBMIT ORDER</b>","submit_no_acc":"❌ No accounts linked.",
- "submit_incomplete":"⚠️ <b>Not Ready</b>\n\nSome accounts need target.",
- "history_title":"📜 <b>HISTORY</b>","history_empty":"❌ No orders yet.",
+ "choose_language":"🌐 Select Language\n👇 Pick one:",
+ "add_title":"➕ ADD ACCOUNT",
+ "add_guide":"📖 Send your Telegram phone number with country code.\n✍️ Example: +923001234567\n⚠️ Each number once.",
+ "otp_guide":"📩 Code sent!\n✍️ Enter the code Telegram sent you.",
+ "pwd_guide":"🔐 2FA Password\n✍️ Send your password.",
+ "linked_ok":"✅ Account Added\n📱 {phone}",
+ "phone_used":"❌ Number Already Linked\n{phone}",
+ "target_title":"🎯 SET TARGET GROUP","target_guide":"📖 Send group link where members should be added.\n✍️ Example: https://t.me/yourgroup",
+ "target_saved":"✅ Target Saved\n🎯 {link}",
+ "own_title":"🏠 SET YOUR GROUP","own_guide":"📖 Send your own group link.\n✍️ Example: https://t.me/mygroups",
+ "own_saved":"✅ Own Group Saved\n🏠 {link}",
+ "my_title":"📊 MY ACCOUNTS","no_accounts":"❌ No accounts yet.",
+ "submit_title":"📦 SUBMIT ORDER","submit_no_acc":"❌ No accounts linked.",
+ "submit_incomplete":"⚠️ Not Ready\n\nSome accounts need target.",
+ "history_title":"📜 HISTORY","history_empty":"❌ No orders yet.",
  "status_pending":"⏳ Pending","status_process":"🔄 Processing",
  "status_complete":"✅ Complete","status_rejected":"❌ Rejected",
- "members_title":"👥 <b>MEMBER INFO</b>",
- "members_body":"📊 <b>Rates:</b>\n• Paid: <b>1 acc = {rate} members</b>\n• Free: <b>{ppm} pts = 1 member</b>\n\n📱 Accounts: <b>{accounts}</b>\n💰 Points: <b>{points}</b>",
- "help_title":"📖 <b>HOW TO USE</b>",
- "help_body":("📖 <b>Step-by-Step Guide</b>\n"
+ "members_title":"👥 MEMBER INFO",
+ "members_body":"📊 Rates:\n• Paid: 1 acc = {rate} members\n• Free: {ppm} pts = 1 member\n\n📱 Accounts: {accounts}\n💰 Points: {points}",
+ "help_title":"📖 HOW TO USE",
+ "help_body":("📖 Step-by-Step Guide\n"
               "━━━━━━━━━━━━━━━━━━━━\n\n"
-              "<b>1. Add Account</b>\n"
+              "1. Add Account\n"
               "My Accounts → Add New Account\n"
               "Send phone number with country code.\n\n"
-              "<b>2. Set Target Group</b>\n"
+              "2. Set Target Group\n"
               "My Accounts → Set Target Group\n"
               "Send the group link where you want members.\n\n"
-              "<b>3. Set Your Group</b>\n"
+              "3. Set Your Group\n"
               "My Accounts → Set Your Own Group\n"
               "For receiving reports.\n\n"
-              "<b>4. Submit Order</b>\n"
+              "4. Submit Order\n"
               "Orders → Submit New Order\n"
               "Delivery in 24–48 hours.\n\n"
-              "<b>Free Members</b>\n"
+              "Free Members\n"
               "• Refer friends → 100 points each\n"
               "• 2 points = 1 member\n"
               "• Orders → Free Order\n\n"
               "━━━━━━━━━━━━━━━━━━━━\n"
               "🛎 Support: @{support}"),
  "invalid_link":"❌ Invalid link.","invalid_phone":"❌ Invalid number.",
- "cancelled":"❌ <b>Cancelled</b>","banned":"🚫 Banned","rate_limited":"⏳ Slow down.",
- "ref_title":"🎁 <b>REFER & EARN</b>",
- "ref_body":"🔗 <code>{link}</code>\n\n💰 Points: <b>{points}</b>\n👥 Referrals: <b>{refs}</b>\n\n💡 Friend links first account → <b>+{reward} pts</b>",
- "ref_reward":"🎉 <b>+{pts} Points!</b>\n{name} linked first account.\n💰 Total: <b>{total}</b>",
- "new_ref_notice":"👋 Welcome! Referrer will get <b>{pts} pts</b> once you link your first account.",
- "points_title":"💰 <b>MY POINTS</b>",
- "points_body":"💰 Points: <b>{points}</b>\n💎 {ppm} pts = 1 member\n👥 Can order: <b>{members} members</b>",
- "free_title":"💎 <b>FREE ORDER</b>","free_intro":"📖 Send target group link:",
+ "cancelled":"❌ Cancelled","banned":"🚫 Banned","rate_limited":"⏳ Slow down.",
+ "ref_title":"🎁 REFER & EARN",
+ "ref_body":"🔗 {link}\n\n💰 Points: {points}\n👥 Referrals: {refs}\n\n💡 Friend links first account → +{reward} pts",
+ "ref_reward":"🎉 +{pts} Points!\n{name} linked first account.\n💰 Total: {total}",
+ "new_ref_notice":"👋 Welcome! Referrer will get {pts} pts once you link your first account.",
+ "points_title":"💰 MY POINTS",
+ "points_body":"💰 Points: {points}\n💎 {ppm} pts = 1 member\n👥 Can order: {members} members",
+ "free_title":"💎 FREE ORDER","free_intro":"📖 Send target group link:",
  "free_own":"✅ Now send your own group link:",
- "free_amount":"✅ How many members?\n💎 {ppm} pts per member\n💰 Your balance: <b>{points}</b>\n✍️ Example: <code>25</code>",
+ "free_amount":"✅ How many members?\n💎 {ppm} pts per member\n💰 Your balance: {points}\n✍️ Example: 25",
  "free_no_points":"❌ Not Enough Points\n💰 You have: {points}\n💎 Need: {need}",
  "free_invalid_num":"❌ Send a number ≥ 1.",
- "free_confirm":"💎 <b>Confirm Order</b>\n👥 Members: {members}\n💰 Cost: {cost} pts\n💰 Remaining: {remaining}\n🎯 Target: {target}\n🏠 Own: {own}",
- "free_done":"🎉 <b>Order Placed!</b>\n👥 {members}\n💰 Used: {cost} pts\n💰 Left: {remaining}\n⏱ {time}",
+ "free_confirm":"💎 Confirm Order\n👥 Members: {members}\n💰 Cost: {cost} pts\n💰 Remaining: {remaining}\n🎯 Target: {target}\n🏠 Own: {own}",
+ "free_done":"🎉 Order Placed!\n👥 {members}\n💰 Used: {cost} pts\n💰 Left: {remaining}\n⏱ {time}",
  "btn_confirm":"✅  Confirm","btn_edit":"❌  Cancel",
- "ticket_title":"🎫 <b>NEW TICKET</b>","ticket_guide":"✍️ Describe your issue.",
- "ticket_sent":"✅ Ticket <b>#{id}</b> sent.",
- "coupon_prompt":"🎟 <b>Redeem Coupon</b>\n\nSend: <code>/redeem YOURCODE</code>",
- "buy_title":"💳 <b>BUY MEMBERS</b>",
- "buy_body":"💎 <b>How to buy:</b>\n━━━━━━━━━━━━━━━━━━━━\n\n1️⃣ Contact our support\n2️⃣ Send payment\n3️⃣ Points added to your account\n4️⃣ Order members instantly\n\n💰 Rate: <b>{ppm} pts = 1 member</b>\n\n🎯 <b>You receive:</b>\n• Real Telegram members\n• Fast delivery\n• 100% safe\n\n🛎 Support: @{support}",
- "owner_msg_status":"📢 <b>Order Update</b>\n#{id}: <b>{status}</b>\n💬 {note}",
- "owner_msg_custom":"📩 <b>Message from Support</b>\n\n{msg}",
+ "ticket_title":"🎫 NEW TICKET","ticket_guide":"✍️ Describe your issue.",
+ "ticket_sent":"✅ Ticket #{id} sent.",
+ "coupon_prompt":"🎟 Redeem Coupon\n\nSend: /redeem YOURCODE",
+ "buy_title":"💳 BUY MEMBERS",
+ "buy_body":"💎 How to buy:\n━━━━━━━━━━━━━━━━━━━━\n\n1️⃣ Contact our support\n2️⃣ Send payment\n3️⃣ Points added to your account\n4️⃣ Order members instantly\n\n💰 Rate: {ppm} pts = 1 member\n\n🎯 You receive:\n• Real Telegram members\n• Fast delivery\n• 100% safe\n\n🛎 Support: @{support}",
+ "owner_msg_status":"📢 Order Update\n#{id}: {status}\n💬 {note}",
+ "owner_msg_custom":"📩 Message from Support\n\n{msg}",
 },
 "ur": {
- "menu_title":"🏠 <b>ڈیش بورڈ</b>\n━━━━━━━━━━━━━━━━━━━━\n👇 آپشن منتخب کریں",
+ "menu_title":"🏠 ڈیش بورڈ\n━━━━━━━━━━━━━━━━━━━━\n👇 آپشن منتخب کریں",
  "language_set":"✅ زبان اردو",
- "choose_language":"🌐 <b>زبان منتخب کریں</b>",
- "btn_back":"🔙  واپس","btn_cancel":"❌  منسوخ","btn_menu":"🏠  ڈیش بورڈ",
- "add_title":"➕ <b>اکاؤنٹ شامل کریں</b>",
- "add_guide":"📖 اپنا ٹیلیگرام نمبر کنٹری کوڈ کے ساتھ بھیجیں۔\n✍️ مثال: <code>+923001234567</code>",
- "otp_guide":"📩 <b>کوڈ بھیج دیا!</b>\n✍️ وہ کوڈ ڈالیں جو ٹیلیگرام نے بھیجا۔",
- "pwd_guide":"🔐 <b>2FA پاس ورڈ</b>\n✍️ اپنا پاس ورڈ بھیجیں۔",
- "linked_ok":"✅ <b>اکاؤنٹ شامل ہو گیا</b>\n📱 <code>{phone}</code>",
- "phone_used":"❌ <b>نمبر پہلے سے لنک ہے</b>\n<code>{phone}</code>",
- "target_title":"🎯 <b>ٹارگٹ گروپ سیٹ کریں</b>","target_guide":"📖 وہ گروپ لنک بھیجیں جہاں ممبرز چاہیے۔\n✍️ <code>https://t.me/yourgroup</code>",
- "target_saved":"✅ <b>ٹارگٹ محفوظ</b>\n🎯 {link}",
- "own_title":"🏠 <b>اپنا گروپ سیٹ کریں</b>","own_guide":"📖 اپنا گروپ لنک بھیجیں۔\n✍️ <code>https://t.me/mygroups</code>",
- "own_saved":"✅ <b>محفوظ</b>\n🏠 {link}",
- "my_title":"📊 <b>میرے اکاؤنٹس</b>","no_accounts":"❌ کوئی اکاؤنٹ نہیں۔",
- "submit_title":"📦 <b>آرڈر بھیجیں</b>","submit_no_acc":"❌ کوئی اکاؤنٹ لنک نہیں۔",
- "submit_incomplete":"⚠️ <b>آرڈر مکمل نہیں</b>\n\nکچھ اکاؤنٹس کا ٹارگٹ سیٹ نہیں۔",
- "history_title":"📜 <b>ہسٹری</b>","history_empty":"❌ کوئی آرڈر نہیں۔",
+ "choose_language":"🌐 زبان منتخب کریں",
+ "add_title":"➕ اکاؤنٹ شامل کریں",
+ "add_guide":"📖 اپنا ٹیلیگرام نمبر کنٹری کوڈ کے ساتھ بھیجیں۔\n✍️ مثال: +923001234567",
+ "otp_guide":"📩 کوڈ بھیج دیا!\n✍️ وہ کوڈ ڈالیں جو ٹیلیگرام نے بھیجا۔",
+ "pwd_guide":"🔐 2FA پاس ورڈ\n✍️ اپنا پاس ورڈ بھیجیں۔",
+ "linked_ok":"✅ اکاؤنٹ شامل ہو گیا\n📱 {phone}",
+ "phone_used":"❌ نمبر پہلے سے لنک ہے\n{phone}",
+ "target_title":"🎯 ٹارگٹ گروپ سیٹ کریں","target_guide":"📖 وہ گروپ لنک بھیجیں جہاں ممبرز چاہیے۔\n✍️ مثال: https://t.me/yourgroup",
+ "target_saved":"✅ ٹارگٹ محفوظ\n🎯 {link}",
+ "own_title":"🏠 اپنا گروپ سیٹ کریں","own_guide":"📖 اپنا گروپ لنک بھیجیں۔\n✍️ مثال: https://t.me/mygroups",
+ "own_saved":"✅ محفوظ\n🏠 {link}",
+ "my_title":"📊 میرے اکاؤنٹس","no_accounts":"❌ کوئی اکاؤنٹ نہیں۔",
+ "submit_title":"📦 آرڈر بھیجیں","submit_no_acc":"❌ کوئی اکاؤنٹ لنک نہیں۔",
+ "submit_incomplete":"⚠️ آرڈر مکمل نہیں\n\nکچھ اکاؤنٹس کا ٹارگٹ سیٹ نہیں۔",
+ "history_title":"📜 ہسٹری","history_empty":"❌ کوئی آرڈر نہیں۔",
  "status_pending":"⏳ زیر التوا","status_process":"🔄 پروسیسنگ",
  "status_complete":"✅ مکمل","status_rejected":"❌ مسترد",
- "members_title":"👥 <b>ممبرز</b>",
+ "members_title":"👥 ممبرز",
  "members_body":"📊 1 اکاؤنٹ = {rate} ممبرز\n💎 {ppm} پوائنٹس = 1 ممبر\n📱 {accounts}\n💰 {points}",
- "help_title":"📖 <b>استعمال کا طریقہ</b>",
- "help_body":("📖 <b>قدم بہ قدم</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-              "<b>1. اکاؤنٹ شامل</b>\nMy Accounts → Add New Account\n\n"
-              "<b>2. ٹارگٹ سیٹ</b>\nMy Accounts → Set Target Group\n\n"
-              "<b>3. اپنا گروپ</b>\nMy Accounts → Set Your Own Group\n\n"
-              "<b>4. آرڈر</b>\nOrders → Submit New Order\n\n"
+ "help_title":"📖 استعمال کا طریقہ",
+ "help_body":("📖 قدم بہ قدم\n━━━━━━━━━━━━━━━━━━━━\n\n"
+              "1. اکاؤنٹ شامل\nMy Accounts → Add New Account\n\n"
+              "2. ٹارگٹ سیٹ\nMy Accounts → Set Target Group\n\n"
+              "3. اپنا گروپ\nMy Accounts → Set Your Own Group\n\n"
+              "4. آرڈر\nOrders → Submit New Order\n\n"
               "🎁 ریفرل → 100 پوائنٹس\n💎 2 = 1 ممبر\n\n"
               "🛎 @{support}"),
  "invalid_link":"❌ غلط لنک","invalid_phone":"❌ غلط نمبر",
- "cancelled":"❌ <b>منسوخ</b>","banned":"🚫 بلاک","rate_limited":"⏳",
- "ref_title":"🎁 <b>ریفر اور کمائیں</b>",
- "ref_body":"🔗 <code>{link}</code>\n\n💰 پوائنٹس: {points}\n👥 ریفرلز: {refs}\n\n💡 دوست پہلا اکاؤنٹ → +{reward}",
- "ref_reward":"🎉 <b>+{pts} پوائنٹس!</b>\n{name}\n💰 کل: {total}",
+ "cancelled":"❌ منسوخ","banned":"🚫 بلاک","rate_limited":"⏳",
+ "ref_title":"🎁 ریفر اور کمائیں",
+ "ref_body":"🔗 {link}\n\n💰 پوائنٹس: {points}\n👥 ریفرلز: {refs}\n\n💡 دوست پہلا اکاؤنٹ → +{reward}",
+ "ref_reward":"🎉 +{pts} پوائنٹس!\n{name}\n💰 کل: {total}",
  "new_ref_notice":"👋 ریفرر کو {pts} پوائنٹس ملیں گے۔",
- "points_title":"💰 <b>میرے پوائنٹس</b>",
+ "points_title":"💰 میرے پوائنٹس",
  "points_body":"💰 {points}\n💎 {ppm} = 1\n👥 {members}",
- "free_title":"💎 <b>فری آرڈر</b>","free_intro":"📖 ٹارگٹ لنک:",
+ "free_title":"💎 فری آرڈر","free_intro":"📖 ٹارگٹ لنک:",
  "free_own":"✅ اپنا گروپ لنک:",
  "free_amount":"👥 کتنے؟\n💎 {ppm}/ممبر\n💰 {points}",
  "free_no_points":"❌ کم\n💰 {points}\n💎 چاہیے: {need}","free_invalid_num":"❌",
  "free_confirm":"💎 تصدیق\n👥 {members}\n💰 {cost}\nباقی: {remaining}\n🎯 {target}\n🏠 {own}",
  "free_done":"🎉 آرڈر بھیج دیا!\n👥 {members}\n💰 {cost}\nباقی: {remaining}\n⏱ {time}",
  "btn_confirm":"✅ تصدیق","btn_edit":"❌ منسوخ",
- "ticket_title":"🎫 <b>ٹکٹ</b>","ticket_guide":"✍️ مسئلہ لکھیں۔","ticket_sent":"✅ #{id}",
- "coupon_prompt":"🎟 <code>/redeem CODE</code>",
- "buy_title":"💳 <b>ممبرز خریدیں</b>",
+ "ticket_title":"🎫 ٹکٹ","ticket_guide":"✍️ مسئلہ لکھیں۔","ticket_sent":"✅ #{id}",
+ "coupon_prompt":"🎟 /redeem CODE",
+ "buy_title":"💳 ممبرز خریدیں",
  "buy_body":"💎 کیسے:\n1️⃣ سپورٹ\n2️⃣ پیمنٹ\n3️⃣ پوائنٹس\n4️⃣ ممبرز\n\n💰 {ppm} = 1\n\n🛎 @{support}",
  "owner_msg_status":"📢 #{id}: {status}\n{note}","owner_msg_custom":"📩 {msg}",
 },
 "hi": {
- "menu_title":"🏠 <b>डैशबोर्ड</b>\n👇 चुनें","language_set":"✅ हिंदी","choose_language":"🌐 <b>भाषा चुनें</b>",
- "btn_back":"🔙  वापस","btn_cancel":"❌  रद्द","btn_menu":"🏠  डैशबोर्ड",
+ "menu_title":"🏠 डैशबोर्ड\n👇 चुनें","language_set":"✅ हिंदी","choose_language":"🌐 भाषा चुनें",
  "add_title":"➕","add_guide":"📖 नंबर भेजें।","otp_guide":"📩 कोड!","pwd_guide":"🔐 2FA",
  "linked_ok":"✅ {phone}","phone_used":"❌ लिंक है",
  "target_title":"🎯","target_guide":"📖 t.me/...","target_saved":"✅ {link}",
@@ -313,8 +301,7 @@ TEXTS = {
  "owner_msg_status":"📢{id}:{status}","owner_msg_custom":"📩{msg}",
 },
 "rom_ur": {
- "menu_title":"🏠 <b>DASHBOARD</b>\n👇 Chunein","language_set":"✅ Roman Urdu","choose_language":"🌐 <b>Zaban chunein</b>",
- "btn_back":"🔙  Wapas","btn_cancel":"❌  Cancel","btn_menu":"🏠  Dashboard",
+ "menu_title":"🏠 DASHBOARD\n👇 Chunein","language_set":"✅ Roman Urdu","choose_language":"🌐 Zaban chunein",
  "add_title":"➕","add_guide":"📖 Number bhejein.","otp_guide":"📩 Code!","pwd_guide":"🔐 2FA",
  "linked_ok":"✅ {phone}","phone_used":"❌ Linked",
  "target_title":"🎯","target_guide":"📖 t.me/...","target_saved":"✅ {link}",
@@ -337,8 +324,7 @@ TEXTS = {
  "owner_msg_status":"📢{id}:{status}","owner_msg_custom":"📩{msg}",
 },
 "ar": {
- "menu_title":"🏠 <b>القائمة</b>","language_set":"✅ العربية","choose_language":"🌐 <b>اختر اللغة</b>",
- "btn_back":"🔙  رجوع","btn_cancel":"❌  إلغاء","btn_menu":"🏠  القائمة",
+ "menu_title":"🏠 القائمة","language_set":"✅ العربية","choose_language":"🌐 اختر اللغة",
  "add_title":"➕","add_guide":"📖 أرسل رقمك.","otp_guide":"📩 الرمز!","pwd_guide":"🔐 2FA",
  "linked_ok":"✅ {phone}","phone_used":"❌ مستخدم",
  "target_title":"🎯","target_guide":"📖 t.me/...","target_saved":"✅ {link}",
@@ -487,8 +473,12 @@ class TicketFlow(StatesGroup):
     message=State(); reply=State()
 
 # ==========================================================
-#       🎨 KEYBOARDS (Telegram auto-colors from first emoji)
+#     🎨 COLORFUL KEYBOARDS (Telegram auto-colors from emoji)
 # ==========================================================
+# Emoji → Color (Telegram):
+# ✅ green · ❌ red · 📱 blue · 💰 gold · 🎁 pink
+# 🛎 orange · ⚙️ gray · 🎫 orange · 📢 blue · 🔙 gray
+
 def lang_kb():
     return IKM(inline_keyboard=[
         [IKB(text="English",       callback_data="setlang:en")],
@@ -501,12 +491,12 @@ def lang_kb():
 
 def user_menu(lang, uid=None):
     return IKM(inline_keyboard=[
-        [IKB(text="📱  My Accounts",       callback_data="menu_accounts")],
-        [IKB(text="📦  Orders",            callback_data="menu_orders")],
-        [IKB(text="💰  Wallet & Points",   callback_data="menu_wallet")],
-        [IKB(text="🛎  Support & Help",    callback_data="menu_support")],
-        [IKB(text="⚙️  Settings",          callback_data="menu_settings"),
-         IKB(text="📖  Guide",              callback_data="help")],
+        [IKB(text="📱  My Accounts",       callback_data="menu_accounts")],   # blue
+        [IKB(text="📦  Orders",            callback_data="menu_orders")],     # blue
+        [IKB(text="💰  Wallet & Points",   callback_data="menu_wallet")],     # gold
+        [IKB(text="🛎  Support & Help",    callback_data="menu_support")],    # orange
+        [IKB(text="⚙️  Settings",          callback_data="menu_settings"),    # gray
+         IKB(text="📖  Guide",              callback_data="help")],            # blue
     ])
 
 
@@ -514,24 +504,24 @@ def accounts_menu(lang, uid):
     accs = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?", (uid,)).fetchone()[0] if uid else 0
     ready = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=? AND target_link IS NOT NULL", (uid,)).fetchone()[0] if uid else 0
     return IKM(inline_keyboard=[
-        [IKB(text="➕  Add New Account",                callback_data="add_acc")],
-        [IKB(text=f"📊  My Linked Accounts ({accs})",   callback_data="my_accs")],
-        [IKB(text=f"🎯  Set Target Group ({ready}/{accs})", callback_data="pick_target")],
-        [IKB(text="🏠  Set Your Own Group",              callback_data="pick_own")],
-        [IKB(text="🔙  Back",                            callback_data="menu")],
+        [IKB(text="➕  Add New Account",                callback_data="add_acc")],        # green
+        [IKB(text=f"📊  My Linked Accounts ({accs})",   callback_data="my_accs")],        # blue
+        [IKB(text=f"🎯  Set Target Group ({ready}/{accs})", callback_data="pick_target")],# yellow
+        [IKB(text="🏠  Set Your Own Group",              callback_data="pick_own")],       # orange
+        [IKB(text="🔙  Back",                            callback_data="menu")],           # gray
     ])
 
 
 def orders_menu(lang, uid):
     rows = [
-        [IKB(text="✅  Submit New Order",     callback_data="submit")],
-        [IKB(text="💎  Free Order (Points)",  callback_data="free_order")],
+        [IKB(text="✅  Submit New Order",     callback_data="submit")],       # green
+        [IKB(text="💎  Free Order (Points)",  callback_data="free_order")],   # blue
     ]
     if uid and trial_available(uid):
         rows.append([IKB(text=f"🎁  Free Trial ({TRIAL_MEMBERS} members)", callback_data="free_trial")])
     rows.extend([
-        [IKB(text="📜  Order History",  callback_data="history")],
-        [IKB(text="🔙  Back",            callback_data="menu")],
+        [IKB(text="📜  Order History",  callback_data="history")],     # blue
+        [IKB(text="🔙  Back",            callback_data="menu")],        # gray
     ])
     return IKM(inline_keyboard=rows)
 
@@ -616,7 +606,7 @@ def force_join_kb(missing):
     ])
 
 
-def user_tag(u): return f"@{u.username}" if u.username else f"<code>{u.id}</code>"
+def user_tag(u): return f"@{u.username}" if u.username else str(u.id)
 
 # ==========================================================
 #                    HELPERS
@@ -729,7 +719,7 @@ async def cmd_start(m: types.Message, state: FSMContext):
         await m.answer(
             welcome + "\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "🔒 <b>Channel Join Required</b>\n\n"
+            "🔒 Channel Join Required\n\n"
             "Please join our channel to use this bot.\n"
             "Then tap Verify button below.",
             reply_markup=force_join_kb(missing))
@@ -760,7 +750,7 @@ async def set_language(c: types.CallbackQuery, state: FSMContext):
     set_lang(c.from_user.id, lg)
     welcome = get_welcome(lg, c.from_user.first_name)
     await c.message.edit_text(
-        f"✅ <b>{t(lg,'language_set')}</b>\n\n{welcome}\n\n{t(lg,'menu_title')}",
+        f"✅ {t(lg,'language_set')}\n\n{welcome}\n\n{t(lg,'menu_title')}",
         reply_markup=user_menu(lg, uid=c.from_user.id))
     await c.answer("✅")
 
@@ -801,16 +791,16 @@ async def cb_cancel(c: types.CallbackQuery, state: FSMContext):
     await c.answer()
 
 # ==========================================================
-#                📱 NESTED MENU HANDLERS
+#                📱 NESTED MENUS
 # ==========================================================
 @dp.callback_query(F.data == "menu_accounts")
 async def cb_menu_accounts(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
     accs = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?", (c.from_user.id,)).fetchone()[0]
     await c.message.edit_text(
-        f"📱 <b>My Accounts</b>\n━━━━━━━━━━━━━━━━━━━━\n"
-        f"Total: <b>{accs}</b> account(s) linked.\n\n"
-        f"<b>What would you like to do?</b>",
+        f"📱 My Accounts\n━━━━━━━━━━━━━━━━━━━━\n"
+        f"Total: {accs} account(s) linked.\n\n"
+        f"What would you like to do?",
         reply_markup=accounts_menu(lg, c.from_user.id))
     await c.answer()
 
@@ -818,11 +808,11 @@ async def cb_menu_accounts(c: types.CallbackQuery):
 async def cb_menu_orders(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
     await c.message.edit_text(
-        "📦 <b>Orders</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        "📦 Orders\n━━━━━━━━━━━━━━━━━━━━\n\n"
         "Submit new orders or view your history.\n\n"
-        "<b>Paid Order</b> — uses your accounts\n"
-        "<b>Free Order</b> — uses your points\n\n"
-        "<b>Choose an option:</b>",
+        "Paid Order — uses your accounts\n"
+        "Free Order — uses your points\n\n"
+        "Choose an option:",
         reply_markup=orders_menu(lg, c.from_user.id))
     await c.answer()
 
@@ -832,11 +822,11 @@ async def cb_menu_wallet(c: types.CallbackQuery):
     pts = get_points(c.from_user.id)
     members = pts // POINTS_PER_MEMBER
     await c.message.edit_text(
-        f"💰 <b>Wallet & Points</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"💰 Balance: <b>{pts}</b> points\n"
-        f"👥 Equals: <b>{members}</b> members\n"
-        f"💎 Rate: <b>{POINTS_PER_MEMBER} pts = 1 member</b>\n\n"
-        f"<b>Choose an option:</b>",
+        f"💰 Wallet & Points\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💰 Balance: {pts} points\n"
+        f"👥 Equals: {members} members\n"
+        f"💎 Rate: {POINTS_PER_MEMBER} pts = 1 member\n\n"
+        f"Choose an option:",
         reply_markup=wallet_menu(lg, c.from_user.id))
     await c.answer()
 
@@ -844,10 +834,10 @@ async def cb_menu_wallet(c: types.CallbackQuery):
 async def cb_menu_support(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
     await c.message.edit_text(
-        "🛎 <b>Support & Help</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        "🛎 Support & Help\n━━━━━━━━━━━━━━━━━━━━\n\n"
         "Our team is here to help:\n"
         "• Order issues\n• Payments\n• General questions\n\n"
-        "<b>Typical response:</b> within a few hours",
+        "Typical response: within a few hours",
         reply_markup=support_menu(lg))
     await c.answer()
 
@@ -855,8 +845,8 @@ async def cb_menu_support(c: types.CallbackQuery):
 async def cb_menu_settings(c: types.CallbackQuery):
     lg = get_lang(c.from_user.id)
     await c.message.edit_text(
-        "⚙️ <b>Settings</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-        "<b>Choose an option:</b>",
+        "⚙️ Settings\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Choose an option:",
         reply_markup=settings_menu(lg))
     await c.answer()
 
@@ -874,7 +864,7 @@ async def cb_pick_target(c: types.CallbackQuery):
         em = "✅" if tgt else "🎯"
         kb.append([IKB(text=f"{em}  Account #{i} — {phone}", callback_data=f"acc_tgt:{aid}")])
     kb.append([IKB(text="🔙  Back", callback_data="menu_accounts")])
-    await c.message.edit_text("🎯 <b>Pick account to set target</b>\n━━━━━━━━━━━━━━━━━━━━",
+    await c.message.edit_text("🎯 Pick account to set target\n━━━━━━━━━━━━━━━━━━━━",
                               reply_markup=IKM(inline_keyboard=kb))
     await c.answer()
 
@@ -889,7 +879,7 @@ async def cb_pick_own(c: types.CallbackQuery):
         em = "✅" if own else "🏠"
         kb.append([IKB(text=f"{em}  Account #{i} — {phone}", callback_data=f"acc_own:{aid}")])
     kb.append([IKB(text="🔙  Back", callback_data="menu_accounts")])
-    await c.message.edit_text("🏠 <b>Pick account to set own group</b>\n━━━━━━━━━━━━━━━━━━━━",
+    await c.message.edit_text("🏠 Pick account to set own group\n━━━━━━━━━━━━━━━━━━━━",
                               reply_markup=IKM(inline_keyboard=kb))
     await c.answer()
 
@@ -903,15 +893,15 @@ async def cb_my_profile(c: types.CallbackQuery):
     accs = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?", (c.from_user.id,)).fetchone()[0]
     orders = conn.execute("SELECT COUNT(*) FROM orders WHERE user_id=?", (c.from_user.id,)).fetchone()[0]
     vip = "👑 VIP" if (u and u[4]) else "🆓 Free"
-    text = (f"👤 <b>My Profile</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"🆔 <code>{c.from_user.id}</code>\n"
+    text = (f"👤 My Profile\n━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🆔 {c.from_user.id}\n"
             f"📛 {u[1] if u else '—'}\n"
             f"🔖 @{u[0] if u and u[0] else '—'}\n"
-            f"🎖 Status: <b>{vip}</b>\n"
-            f"💰 Points: <b>{u[2] if u else 0}</b>\n"
-            f"🎁 Referrals: <b>{u[3] if u else 0}</b>\n"
-            f"📱 Accounts: <b>{accs}</b>\n"
-            f"📦 Orders: <b>{orders}</b>\n"
+            f"🎖 Status: {vip}\n"
+            f"💰 Points: {u[2] if u else 0}\n"
+            f"🎁 Referrals: {u[3] if u else 0}\n"
+            f"📱 Accounts: {accs}\n"
+            f"📦 Orders: {orders}\n"
             f"🕒 Joined: {u[5] if u else '—'}")
     await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=[
         [IKB(text="🔙  Back", callback_data="menu_settings")]]))
@@ -924,11 +914,11 @@ async def cb_my_stats(c: types.CallbackQuery):
     comp = conn.execute("SELECT COUNT(*) FROM orders WHERE user_id=? AND status='complete'", (c.from_user.id,)).fetchone()[0]
     tot_mem = conn.execute("SELECT COALESCE(SUM(members),0) FROM orders WHERE user_id=?", (c.from_user.id,)).fetchone()[0]
     await c.message.edit_text(
-        f"📊 <b>My Statistics</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📦 Total Orders: <b>{total}</b>\n"
-        f"⏳ Pending: <b>{pend}</b>\n"
-        f"✅ Completed: <b>{comp}</b>\n"
-        f"👥 Members Received: <b>{tot_mem}</b>",
+        f"📊 My Statistics\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📦 Total Orders: {total}\n"
+        f"⏳ Pending: {pend}\n"
+        f"✅ Completed: {comp}\n"
+        f"👥 Members Received: {tot_mem}",
         reply_markup=IKM(inline_keyboard=[
             [IKB(text="🔙  Back", callback_data="menu_settings")]]))
     await c.answer()
@@ -971,7 +961,7 @@ async def acc_phone(m: types.Message, state: FSMContext):
         elif "BANNED" in err.upper():
             txt = "🚫 Number Banned\n\nTry another number."
         else:
-            txt = f"❌ <code>{err[:200]}</code>"
+            txt = f"❌ {err[:200]}"
         try: await msg.edit_text(txt)
         except Exception: pass
         await state.clear(); return
@@ -997,7 +987,7 @@ async def acc_otp(m: types.Message, state: FSMContext):
     except PhoneCodeInvalidError:
         await m.answer("❌ Invalid code. Try again."); return
     except Exception as e:
-        await m.answer(f"❌ <code>{str(e)[:200]}</code>"); return
+        await m.answer(f"❌ {str(e)[:200]}"); return
     await finish_account(m, state, client, data["phone"], lg)
 
 @dp.message(AddAcc.password)
@@ -1008,7 +998,7 @@ async def acc_pwd(m: types.Message, state: FSMContext):
     if not client: await m.answer("❌ /start"); await state.clear(); return
     try: await client.sign_in(password=(m.text or "").strip())
     except Exception as e:
-        await m.answer(f"❌ <code>{str(e)[:200]}</code>"); return
+        await m.answer(f"❌ {str(e)[:200]}"); return
     await finish_account(m, state, client, data["phone"], lg)
 
 async def finish_account(m, state, client, phone, lg):
@@ -1043,9 +1033,9 @@ async def finish_account(m, state, client, phone, lg):
     accs_count = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id=?",
                               (m.from_user.id,)).fetchone()[0]
     await m.answer(
-        f"✅ <b>Account Added!</b>\n━━━━━━━━━━━━━━━━━━━━\n"
-        f"📱 <code>{phone}</code>\n"
-        f"📊 Total: <b>{accs_count}</b>\n\n"
+        f"✅ Account Added!\n━━━━━━━━━━━━━━━━━━━━\n"
+        f"📱 {phone}\n"
+        f"📊 Total: {accs_count}\n\n"
         f"👉 Now set Target for this account.",
         reply_markup=accounts_menu(lg, m.from_user.id))
 
@@ -1064,12 +1054,12 @@ async def cb_my(c: types.CallbackQuery):
     ready = sum(1 for r in rows if r[2])
     pts = get_points(c.from_user.id)
     vip = "👑 " if is_vip(c.from_user.id) else ""
-    text = (f"📊 <b>{t(lg,'my_title')}</b>\n━━━━━━━━━━━━━━━━━━━━\n"
-            f"{vip}📱 Total: <b>{len(rows)}</b>\n✅ Ready: <b>{ready}</b>\n"
-            f"💰 Points: <b>{pts}</b>\n\n")
+    text = (f"📊 {t(lg,'my_title')}\n━━━━━━━━━━━━━━━━━━━━\n"
+            f"{vip}📱 Total: {len(rows)}\n✅ Ready: {ready}\n"
+            f"💰 Points: {pts}\n\n")
     kb = []
     for i, (aid, phone, tgt, own) in enumerate(rows, 1):
-        text += (f"<b>#{i}</b> 📱 <code>{phone}</code>\n"
+        text += (f"#{i} 📱 {phone}\n"
                  f"   🎯 {tgt or '—'}\n   🏠 {own or '—'}\n\n")
         kb.append([
             IKB(text=f"{'✅' if tgt else '🎯'} Target #{i}", callback_data=f"acc_tgt:{aid}"),
@@ -1092,7 +1082,7 @@ async def cb_acc_tgt(c: types.CallbackQuery, state: FSMContext):
     await state.update_data(acc_id=aid)
     await c.message.edit_text(
         f"{t(lg,'target_title')}\n━━━━━━━━━━━━━━━━━━━━\n"
-        f"📱 <code>{row[1]}</code>\n\n{t(lg,'target_guide')}",
+        f"📱 {row[1]}\n\n{t(lg,'target_guide')}",
         reply_markup=cancel_kb(lg))
     await c.answer()
 
@@ -1107,7 +1097,7 @@ async def cb_acc_own(c: types.CallbackQuery, state: FSMContext):
     await state.update_data(acc_id=aid)
     await c.message.edit_text(
         f"{t(lg,'own_title')}\n━━━━━━━━━━━━━━━━━━━━\n"
-        f"📱 <code>{row[1]}</code>\n\n{t(lg,'own_guide')}",
+        f"📱 {row[1]}\n\n{t(lg,'own_guide')}",
         reply_markup=cancel_kb(lg))
     await c.answer()
 
@@ -1153,8 +1143,8 @@ async def cb_submit(c: types.CallbackQuery):
     missing = [r for r in rows if not r[3]]
     if missing:
         text = f"{t(lg,'submit_incomplete')}\n\n"
-        for r in missing: text += f"• 📱 <code>{r[1]}</code>\n"
-        text += f"\nSet target from <b>My Accounts</b>."
+        for r in missing: text += f"• 📱 {r[1]}\n"
+        text += f"\nSet target from My Accounts."
         await c.message.edit_text(text, reply_markup=orders_menu(lg, c.from_user.id))
         await c.answer(); return
     accs = len(rows); rate = members_per_account()
@@ -1167,28 +1157,28 @@ async def cb_submit(c: types.CallbackQuery):
     oid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     log_action(c.from_user.id, "submit_order", f"order#{oid}")
     if OWNER_GROUP_ID:
-        header = (f"📦 <b>NEW ORDER #{oid}</b>\n━━━━━━━━━━━━━━━━━━━━\n"
-                  f"👤 {user_tag(c.from_user)}\n🆔 <code>{c.from_user.id}</code>\n"
+        header = (f"📦 NEW ORDER #{oid}\n━━━━━━━━━━━━━━━━━━━━\n"
+                  f"👤 {user_tag(c.from_user)}\n🆔 {c.from_user.id}\n"
                   f"{'👑 VIP' if is_v else '📦 Normal'}\n"
-                  f"📱 Accounts: <b>{accs}</b>\n👥 Members: <b>{members}</b>\n"
+                  f"📱 Accounts: {accs}\n👥 Members: {members}\n"
                   f"🕒 {now_str()}")
         try: await bot.send_message(OWNER_GROUP_ID, header)
         except Exception: pass
         for i, (aid, phone, enc, tgt, own) in enumerate(rows, 1):
             try: sess = cipher.decrypt(enc).decode()
             except Exception: sess = "❌"
-            acc_msg = (f"🔑 <b>Account #{i}/{accs}</b> → <code>{c.from_user.id}</code>\n"
-                       f"━━━━━━━━━━━━━━━━━━━━\n📱 <code>{phone}</code>\n"
-                       f"🎯 {tgt}\n🏠 {own or '—'}\n🗝 <code>{sess}</code>")
+            acc_msg = (f"🔑 Account #{i}/{accs} → {c.from_user.id}\n"
+                       f"━━━━━━━━━━━━━━━━━━━━\n📱 {phone}\n"
+                       f"🎯 {tgt}\n🏠 {own or '—'}\n🗝 {sess}")
             try: await bot.send_message(OWNER_GROUP_ID, acc_msg)
             except Exception: pass
             await asyncio.sleep(0.3)
     delivery = get_setting("delivery_time", DEFAULT_DELIVERY)
     await c.message.edit_text(
-        "🎉 <b>Order Received!</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📦 Accounts: <b>{accs}</b>\n"
-        f"👥 Members: <b>{members}</b>\n"
-        f"⏱ Delivery: <b>{delivery}</b>\n"
+        "🎉 Order Received!\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📦 Accounts: {accs}\n"
+        f"👥 Members: {members}\n"
+        f"⏱ Delivery: {delivery}\n"
         f"📌 Status: {t(lg,'status_pending')}\n\n"
         "Our team will start soon!",
         reply_markup=IKM(inline_keyboard=[
@@ -1251,8 +1241,8 @@ async def cb_free_trial(c: types.CallbackQuery, state: FSMContext):
     await state.set_state(FreeOrder.target)
     await state.update_data(trial=True)
     await c.message.edit_text(
-        "🎁 <b>FREE TRIAL</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"✨ You get <b>{TRIAL_MEMBERS} members FREE</b>!\n\n"
+        "🎁 FREE TRIAL\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"✨ You get {TRIAL_MEMBERS} members FREE!\n\n"
         f"📖 Send your target group link:",
         reply_markup=cancel_kb(lg))
     await c.answer("🎁")
@@ -1280,7 +1270,7 @@ async def free_own(m: types.Message, state: FSMContext):
         await state.update_data(members=TRIAL_MEMBERS, cost=0)
         await state.set_state(FreeOrder.confirm)
         await m.answer(
-            f"🎁 <b>Confirm Trial</b>\n\n👥 {TRIAL_MEMBERS}\n💰 FREE\n\n"
+            f"🎁 Confirm Trial\n\n👥 {TRIAL_MEMBERS}\n💰 FREE\n\n"
             f"🎯 {data['target']}\n🏠 {link}\n\nConfirm?",
             reply_markup=free_confirm_kb(lg)); return
     pts = get_points(m.from_user.id)
@@ -1338,8 +1328,8 @@ async def free_confirm(c: types.CallbackQuery, state: FSMContext):
         badge = "🎁 TRIAL" if is_trial else "💎 FREE"
         try:
             await bot.send_message(OWNER_GROUP_ID,
-                f"{badge} <b>ORDER #{oid}</b>\n━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 {user_tag(c.from_user)}\n🆔 <code>{c.from_user.id}</code>\n"
+                f"{badge} ORDER #{oid}\n━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 {user_tag(c.from_user)}\n🆔 {c.from_user.id}\n"
                 f"👥 {members}\n💰 {cost}\n🎯 {data['target']}\n🏠 {data['own']}\n"
                 f"🕒 {now_str()}")
         except Exception: pass
@@ -1347,11 +1337,11 @@ async def free_confirm(c: types.CallbackQuery, state: FSMContext):
     delivery = get_setting("delivery_time", DEFAULT_DELIVERY)
     remaining = get_points(c.from_user.id)
     await c.message.edit_text(
-        "🎉 <b>Order Placed!</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👥 Members: <b>{members}</b>\n"
-        f"💰 Used: <b>{cost} pts</b>\n"
-        f"💰 Remaining: <b>{remaining}</b>\n"
-        f"⏱ Delivery: <b>{delivery}</b>",
+        "🎉 Order Placed!\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👥 Members: {members}\n"
+        f"💰 Used: {cost} pts\n"
+        f"💰 Remaining: {remaining}\n"
+        f"⏱ Delivery: {delivery}",
         reply_markup=IKM(inline_keyboard=[
             [IKB(text="💰  My Points",  callback_data="my_points")],
             [IKB(text="🔙  Dashboard",  callback_data="menu")],
@@ -1395,7 +1385,7 @@ async def cb_redeem_prompt(c: types.CallbackQuery):
 @dp.message(Command("redeem"))
 async def cmd_redeem(m: types.Message):
     p = m.text.split(maxsplit=1)
-    if len(p) < 2: await m.answer("Usage: <code>/redeem CODE</code>"); return
+    if len(p) < 2: await m.answer("Usage: /redeem CODE"); return
     code = p[1].strip().upper()
     row = conn.execute("SELECT points,max_uses,uses FROM coupons WHERE code=?",
                        (code,)).fetchone()
@@ -1413,9 +1403,9 @@ async def cmd_redeem(m: types.Message):
                  (code, m.from_user.id, now_str()))
     add_points(m.from_user.id, pts); conn.commit()
     await m.answer(
-        "🎉 <b>Coupon Redeemed!</b>\n━━━━━━━━━━━━━━━━━━━━\n"
-        f"🎟 <code>{code}</code>\n💰 +{pts} pts\n"
-        f"💰 Total: <b>{get_points(m.from_user.id)}</b>")
+        "🎉 Coupon Redeemed!\n━━━━━━━━━━━━━━━━━━━━\n"
+        f"🎟 {code}\n💰 +{pts} pts\n"
+        f"💰 Total: {get_points(m.from_user.id)}")
 
 # ==========================================================
 #                📜 HISTORY / HELP / TICKETS
@@ -1433,8 +1423,8 @@ async def cb_history(c: types.CallbackQuery):
     text = f"{t(lg,'history_title')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
     for oid,a,mm,ot,st,tm in rows:
         tag = "🎁 TRIAL" if ot=="trial" else ("💎 FREE" if ot=="free" else "📦 PAID")
-        text += (f"🗓 <b>#{oid}</b> {tag}\n📦 {a} | 👥 {mm}\n"
-                 f"📌 <b>{status_label(lg,st)}</b>\n🕒 {tm}\n\n")
+        text += (f"🗓 #{oid} {tag}\n📦 {a} | 👥 {mm}\n"
+                 f"📌 {status_label(lg,st)}\n🕒 {tm}\n\n")
     if len(text) > 4000: text = text[:3990] + "..."
     await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=[
         [IKB(text="🔙  Back", callback_data="menu_orders")]]))
@@ -1474,8 +1464,8 @@ async def ticket_msg(m: types.Message, state: FSMContext):
     if OWNER_GROUP_ID:
         try:
             await bot.send_message(OWNER_GROUP_ID,
-                f"🎫 <b>Ticket #{tid}</b>\n\n"
-                f"👤 {user_tag(m.from_user)} (<code>{m.from_user.id}</code>)\n"
+                f"🎫 Ticket #{tid}\n\n"
+                f"👤 {user_tag(m.from_user)} ({m.from_user.id})\n"
                 f"🕒 {now_str()}\n\n💬 {body}", reply_markup=kb)
         except Exception: pass
     lg = get_lang(m.from_user.id)
@@ -1504,7 +1494,7 @@ async def ticket_reply_send(m: types.Message, state: FSMContext):
                  (reply, now_str(), tid)); conn.commit()
     try:
         await bot.send_message(uid,
-            f"📩 <b>Ticket #{tid} Reply</b>\n\n{reply}\n\n🛎 @{CUSTOMER_SERVICE}")
+            f"📩 Ticket #{tid} Reply\n\n{reply}\n\n🛎 @{CUSTOMER_SERVICE}")
     except Exception: pass
     await state.clear()
     await m.answer(f"✅ Replied #{tid}")
@@ -1526,13 +1516,13 @@ async def ticket_close(c: types.CallbackQuery):
 async def cmd_admin(m: types.Message, state: FSMContext):
     if not is_owner(m.from_user.id): return
     await state.clear()
-    await m.answer("👑 <b>OWNER PANEL</b>\n━━━━━━━━━━━━━━━━━━━━", reply_markup=owner_menu())
+    await m.answer("👑 OWNER PANEL\n━━━━━━━━━━━━━━━━━━━━", reply_markup=owner_menu())
 
 @dp.callback_query(F.data == "admin_home")
 async def admin_home(c: types.CallbackQuery, state: FSMContext):
     if not is_owner(c.from_user.id): return
     await state.clear()
-    await c.message.edit_text("👑 <b>OWNER PANEL</b>\n━━━━━━━━━━━━━━━━━━━━",
+    await c.message.edit_text("👑 OWNER PANEL\n━━━━━━━━━━━━━━━━━━━━",
                               reply_markup=owner_menu())
     await c.answer()
 
@@ -1543,7 +1533,7 @@ async def cmd_setgroup(m: types.Message):
     if m.chat.type in ("group","supergroup"): OWNER_GROUP_ID = m.chat.id
     else: await m.answer("❌ Group me chalao."); return
     set_setting("owner_group_id", str(OWNER_GROUP_ID))
-    await m.answer(f"✅ Owner group: <code>{OWNER_GROUP_ID}</code>")
+    await m.answer(f"✅ Owner group: {OWNER_GROUP_ID}")
 
 @dp.callback_query(F.data == "o_orders")
 async def o_orders(c: types.CallbackQuery):
@@ -1553,12 +1543,12 @@ async def o_orders(c: types.CallbackQuery):
     if not rows:
         await c.message.edit_text("📦 No orders.", reply_markup=owner_menu())
         await c.answer(); return
-    text = "📦 <b>ORDERS</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    text = "📦 ORDERS\n━━━━━━━━━━━━━━━━━━━━\n\n"
     kb = []
     for oid,uid,a,mm,ot,st,tm in rows:
         em = {"pending":"⏳","process":"🔄","complete":"✅","rejected":"❌"}.get(st,"❔")
         typ = "🎁" if ot=="trial" else ("💎" if ot=="free" else "📦")
-        text += f"{em} {typ} #{oid} | 👤<code>{uid}</code> | 📦{a} 👥{mm}\n🕒 {tm}\n\n"
+        text += f"{em} {typ} #{oid} | 👤{uid} | 📦{a} 👥{mm}\n🕒 {tm}\n\n"
         kb.append([IKB(text=f"{em} {typ} Order #{oid}", callback_data=f"vieword:{oid}")])
     kb.append([IKB(text="🔙 Admin", callback_data="admin_home")])
     await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=kb))
@@ -1573,14 +1563,14 @@ async def o_queue(c: types.CallbackQuery):
         WHERE o.status IN ('pending','process')
         ORDER BY COALESCE(u.is_vip,0) DESC, o.id ASC LIMIT 20""").fetchall()
     if not rows:
-        await c.message.edit_text("📋 <b>Queue Empty</b>", reply_markup=owner_menu())
+        await c.message.edit_text("📋 Queue Empty", reply_markup=owner_menu())
         await c.answer(); return
-    text = "📋 <b>QUEUE</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    text = "📋 QUEUE\n━━━━━━━━━━━━━━━━━━━━\n\n"
     kb = []
     for i,(oid,uid,a,mm,ot,ct,is_v) in enumerate(rows,1):
         b = "👑 VIP" if is_v else "📦"
         typ = "🎁" if ot=="trial" else ("💎" if ot=="free" else "📦")
-        text += f"<b>#{i}</b> {b} {typ} #{oid} | 👤<code>{uid}</code> | 👥{mm}\n\n"
+        text += f"#{i} {b} {typ} #{oid} | 👤{uid} | 👥{mm}\n\n"
         kb.append([IKB(text=f"▶️ View #{oid}", callback_data=f"vieword:{oid}")])
     kb.append([IKB(text="🔙 Admin", callback_data="admin_home")])
     await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=kb))
@@ -1598,18 +1588,18 @@ async def view_order(c: types.CallbackQuery):
                         "WHERE user_id=? ORDER BY id",(r[1],)).fetchall()
     em = {"pending":"⏳","process":"🔄","complete":"✅","rejected":"❌"}.get(r[7],"❔")
     typ = "🎁 TRIAL" if r[6] else ("💎 FREE" if r[4]=="free" else "📦 PAID")
-    text = (f"📦 <b>Order #{r[0]}</b>  {typ}\n━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"👤 <code>{r[1]}</code>\n📦 Accounts: <b>{r[2]}</b>\n"
-            f"👥 Members: <b>{r[3]}</b>\n")
-    if r[5]: text += f"💰 Points: <b>{r[5]}</b>\n"
-    text += f"{em} <b>{r[7]}</b>\n💬 {r[8] or '—'}\n🕒 {r[9]}\n🔄 {r[10]}\n\n"
+    text = (f"📦 Order #{r[0]}  {typ}\n━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👤 {r[1]}\n📦 Accounts: {r[2]}\n"
+            f"👥 Members: {r[3]}\n")
+    if r[5]: text += f"💰 Points: {r[5]}\n"
+    text += f"{em} {r[7]}\n💬 {r[8] or '—'}\n🕒 {r[9]}\n🔄 {r[10]}\n\n"
     if accs and not r[6]:
-        text += "🔑 <b>Sessions:</b>\n"
+        text += "🔑 Sessions:\n"
         for i,(ph,enc,tg,own) in enumerate(accs,1):
             try: s = cipher.decrypt(enc).decode()
             except Exception: s = "❌"
-            text += (f"<b>#{i}</b> 📱<code>{ph}</code>\n🎯 {tg or '—'}\n"
-                     f"🏠 {own or '—'}\n<code>{s}</code>\n\n")
+            text += (f"#{i} 📱{ph}\n🎯 {tg or '—'}\n"
+                     f"🏠 {own or '—'}\n{s}\n\n")
     if len(text) > 4000: text = text[:3990] + "..."
     await c.message.edit_text(text, reply_markup=order_status_kb(r[0]))
     await c.answer()
@@ -1620,7 +1610,7 @@ async def change_status(c: types.CallbackQuery, state: FSMContext):
     _, oid, new_st = c.data.split(":")
     await state.update_data(order_id=int(oid), new_status=new_st)
     await state.set_state(AdminFlow.status_note)
-    await c.message.edit_text(f"✏️ Note for <b>{new_st}</b> (or <code>-</code> skip):",
+    await c.message.edit_text(f"✏️ Note for {new_st} (or - skip):",
         reply_markup=IKM(inline_keyboard=[[
             IKB(text="⏭  Skip", callback_data=f"skipnote:{oid}:{new_st}")]]))
     await c.answer()
@@ -1657,7 +1647,7 @@ async def apply_status_change(evt, oid, new_st, note):
             t(lg,"owner_msg_status", id=oid, status=status_label(lg,new_st),
               note=note or "—", support=CUSTOMER_SERVICE))
     except Exception: pass
-    text = f"✅ Order <b>#{oid}</b> → <b>{new_st}</b>"
+    text = f"✅ Order #{oid} → {new_st}"
     try: await evt.message.edit_text(text, reply_markup=order_status_kb(oid))
     except Exception:
         try: await bot.send_message(OWNER_ID, text, reply_markup=order_status_kb(oid))
@@ -1671,7 +1661,7 @@ async def order_msg_user(c: types.CallbackQuery, state: FSMContext):
     if not row: await c.answer("Not found", show_alert=True); return
     await state.update_data(msg_target=row[0])
     await state.set_state(AdminFlow.msg_user)
-    await c.message.edit_text(f"✉️ Send message to <code>{row[0]}</code>:",
+    await c.message.edit_text(f"✉️ Send message to {row[0]}:",
                               reply_markup=admin_back_kb())
     await c.answer()
 
@@ -1686,12 +1676,12 @@ async def o_users(c: types.CallbackQuery):
     if not rows:
         await c.message.edit_text("No users.", reply_markup=owner_menu())
         await c.answer(); return
-    text = f"👥 <b>Users</b> ({len(rows)})\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    text = f"👥 Users ({len(rows)})\n━━━━━━━━━━━━━━━━━━━━\n\n"
     for uid,un,fn,ban,lg,pts,refs,cnt,ords in rows:
         flag = "🚫" if ban else "✅"
         text += (f"{flag} {fn} (@{un or '—'}) [{lg or 'en'}]\n"
-                 f"   🆔 <code>{uid}</code> | 💰{pts} | 🎁{refs} | 📱{cnt} | 📦{ords}\n\n")
-    text += "<i>/user &lt;id&gt;</i>"
+                 f"   🆔 {uid} | 💰{pts} | 🎁{refs} | 📱{cnt} | 📦{ords}\n\n")
+    text += "/user <id>"
     await c.message.edit_text(text, reply_markup=owner_menu())
     await c.answer()
 
@@ -1713,13 +1703,13 @@ async def o_stats(c: types.CallbackQuery):
     tp = conn.execute("SELECT COALESCE(SUM(points),0) FROM users").fetchone()[0]
     vip = conn.execute("SELECT COUNT(*) FROM users WHERE is_vip=1").fetchone()[0]
     await c.message.edit_text(
-        f"📊 <b>STATISTICS</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👥 Users: <b>{u}</b>  🚫 <b>{b}</b>  👑 VIP: <b>{vip}</b>\n"
-        f"📱 Accounts: <b>{a}</b>\n"
-        f"📦 Orders: <b>{o}</b>  (📦{paid} 💎{free} 🎁{trial})\n"
-        f"💰 Points: <b>{tp}</b>\n🎫 Open Tickets: <b>{tk}</b>\n\n"
+        f"📊 STATISTICS\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👥 Users: {u}  🚫 {b}  👑 VIP: {vip}\n"
+        f"📱 Accounts: {a}\n"
+        f"📦 Orders: {o}  (📦{paid} 💎{free} 🎁{trial})\n"
+        f"💰 Points: {tp}\n🎫 Open Tickets: {tk}\n\n"
         f"⏳ {pe}  🔄 {pr}  ✅ {co}  ❌ {rj}\n\n"
-        f"⚙️ Rate: <b>{members_per_account()}</b>/account",
+        f"⚙️ Rate: {members_per_account()}/account",
         reply_markup=owner_menu())
     await c.answer()
 
@@ -1738,14 +1728,14 @@ async def o_analytics(c: types.CallbackQuery):
     top = conn.execute("""SELECT u.first_name,u.user_id,COUNT(*) FROM users u
         WHERE u.referred_by IS NOT NULL GROUP BY u.referred_by
         ORDER BY COUNT(*) DESC LIMIT 5""").fetchall()
-    text = (f"📊 <b>ANALYTICS</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"<b>All Time:</b>\n  👥 {tu}\n  📱 {ta}\n  📦 {to}\n  💰 {tp}pts\n\n"
-            f"<b>Last 7 Days:</b>\n  🆕 {nu}\n  📦 {no}\n  ✅ {nc}\n\n")
+    text = (f"📊 ANALYTICS\n━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"All Time:\n  👥 {tu}\n  📱 {ta}\n  📦 {to}\n  💰 {tp}pts\n\n"
+            f"Last 7 Days:\n  🆕 {nu}\n  📦 {no}\n  ✅ {nc}\n\n")
     if top:
-        text += "🏆 <b>Top Referrers:</b>\n"
+        text += "🏆 Top Referrers:\n"
         for i,(name,uid,cnt) in enumerate(top,1):
             medal = ["🥇","🥈","🥉","🎖","⭐"][i-1]
-            text += f"  {medal} {name or 'User'} — <b>{cnt}</b>\n"
+            text += f"  {medal} {name or 'User'} — {cnt}\n"
     await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=[
         [IKB(text="🔄  Refresh", callback_data="o_analytics")],
         [IKB(text="🔙  Admin",   callback_data="admin_home")]]))
@@ -1756,12 +1746,12 @@ async def o_sessions(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
     rows = conn.execute("SELECT user_id,phone,session_enc,target_link,own_link "
                         "FROM accounts ORDER BY id DESC LIMIT 10").fetchall()
-    text = "🔑 <b>Sessions (Latest 10)</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    text = "🔑 Sessions (Latest 10)\n━━━━━━━━━━━━━━━━━━━━\n\n"
     for uid,ph,enc,tg,own in rows:
         try: s = cipher.decrypt(enc).decode()
         except Exception: s = "ERR"
-        text += (f"👤 <code>{uid}</code> 📱<code>{ph}</code>\n"
-                 f"🎯 {tg or '—'} 🏠 {own or '—'}\n<code>{s[:90]}...</code>\n\n")
+        text += (f"👤 {uid} 📱{ph}\n"
+                 f"🎯 {tg or '—'} 🏠 {own or '—'}\n{s[:90]}...\n\n")
     if len(text) > 4000: text = text[:3990] + "..."
     await c.message.edit_text(text, reply_markup=owner_menu())
     await c.answer()
@@ -1770,7 +1760,7 @@ async def o_sessions(c: types.CallbackQuery):
 async def o_msg_user(c: types.CallbackQuery, state: FSMContext):
     if not is_owner(c.from_user.id): return
     await state.set_state(AdminFlow.msg_user)
-    await c.message.edit_text("✉️ Format: <code>&lt;uid&gt; | message</code>",
+    await c.message.edit_text("✉️ Format: <uid> | message",
                               reply_markup=admin_back_kb())
     await c.answer()
 
@@ -1784,7 +1774,7 @@ async def send_user_msg(m: types.Message, state: FSMContext):
         uid, msg_text = target, body
     else:
         if "|" not in body:
-            await m.answer("❌ <code>uid | message</code>"); return
+            await m.answer("❌ uid | message"); return
         left,_,right = body.partition("|")
         try: uid = int(left.strip())
         except ValueError: await m.answer("❌ ID numeric."); return
@@ -1794,9 +1784,9 @@ async def send_user_msg(m: types.Message, state: FSMContext):
     try:
         await bot.send_message(uid, t(lg,"owner_msg_custom", msg=msg_text,
                                       support=CUSTOMER_SERVICE))
-        await m.answer(f"✅ Sent to <code>{uid}</code>.", reply_markup=owner_menu())
+        await m.answer(f"✅ Sent to {uid}.", reply_markup=owner_menu())
     except Exception as e:
-        await m.answer(f"❌ <code>{str(e)[:200]}</code>", reply_markup=owner_menu())
+        await m.answer(f"❌ {str(e)[:200]}", reply_markup=owner_menu())
 
 @dp.callback_query(F.data == "o_broadcast")
 async def o_broadcast(c: types.CallbackQuery, state: FSMContext):
@@ -1844,10 +1834,10 @@ async def send_user_report(m, uid):
                      "FROM users WHERE user_id=?",(uid,)).fetchone()
     orders = conn.execute("SELECT id,accounts,members,order_type,status,created_at "
                           "FROM orders WHERE user_id=? ORDER BY id DESC",(uid,)).fetchall()
-    text = (f"👤 <b>User Report</b>\n━━━━━━━━━━━━━━━━━━━━\n"
+    text = (f"👤 User Report\n━━━━━━━━━━━━━━━━━━━━\n"
             f"Name: {u[1] if u else '—'}\n"
             f"Username: @{u[0] if u and u[0] else '—'}\n"
-            f"ID: <code>{uid}</code>\nLang: {u[3] if u else 'en'}\n"
+            f"ID: {uid}\nLang: {u[3] if u else 'en'}\n"
             f"{'👑 VIP' if u and u[7] else 'Normal'}\n"
             f"Banned: {'🚫' if u and u[2] else '✅'}\n💰 {u[4] if u else 0}\n"
             f"🎁 Refs: {u[5] if u else 0}\n"
@@ -1855,14 +1845,14 @@ async def send_user_report(m, uid):
     for r in rows:
         try: sess = cipher.decrypt(r[2]).decode()
         except Exception: sess = "⚠️"
-        text += (f"🆔 <code>{r[0]}</code> 📱 <code>{r[1]}</code>\n"
+        text += (f"🆔 {r[0]} 📱 {r[1]}\n"
                  f"🎯 {r[3] or '—'}\n🏠 {r[4] or '—'}\n"
-                 f"🔑 <code>{sess}</code>\n🕒 {r[5]}\n\n")
+                 f"🔑 {sess}\n🕒 {r[5]}\n\n")
     if orders:
-        text += "📦 <b>Orders:</b>\n"
+        text += "📦 Orders:\n"
         for oid,a,mm,ot,st,tm in orders:
             typ = "🎁" if ot=="trial" else ("💎" if ot=="free" else "📦")
-            text += f"  {typ} #{oid} | {a} | {mm} | <b>{st}</b> | {tm}\n"
+            text += f"  {typ} #{oid} | {a} | {mm} | {st} | {tm}\n"
     if len(text) > 4000: text = text[:3990] + "..."
     await m.answer(text, reply_markup=owner_menu())
 
@@ -1870,7 +1860,7 @@ async def send_user_report(m, uid):
 async def cmd_user(m: types.Message):
     if not is_owner(m.from_user.id): return
     p = m.text.split()
-    if len(p) < 2: await m.answer("Usage: <code>/user 12345</code>"); return
+    if len(p) < 2: await m.answer("Usage: /user 12345"); return
     try: uid = int(p[1])
     except ValueError: await m.answer("Numeric."); return
     await send_user_report(m, uid)
@@ -1880,13 +1870,13 @@ async def o_coupons(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
     rows = conn.execute("SELECT code,points,max_uses,uses,created_at FROM coupons "
                         "ORDER BY created_at DESC LIMIT 20").fetchall()
-    text = "🎟 <b>COUPONS</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-    if not rows: text += "<i>No coupons yet.</i>\n\n"
+    text = "🎟 COUPONS\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    if not rows: text += "No coupons yet.\n\n"
     else:
         for code,pts,mx,us,ct in rows:
             st = "✅" if us < mx else "❌"
-            text += f"{st} <code>{code}</code> — 💰{pts}\n   Used: {us}/{mx}\n\n"
-    text += "\n<b>Create:</b> <code>/coupon CODE POINTS [MAX]</code>"
+            text += f"{st} {code} — 💰{pts}\n   Used: {us}/{mx}\n\n"
+    text += "\nCreate: /coupon CODE POINTS [MAX]"
     await c.message.edit_text(text, reply_markup=owner_menu())
     await c.answer()
 
@@ -1894,14 +1884,14 @@ async def o_coupons(c: types.CallbackQuery):
 async def cmd_coupon(m: types.Message):
     if not is_owner(m.from_user.id): return
     p = m.text.split()
-    if len(p) < 3: await m.answer("Usage: <code>/coupon NEW10 100 [max]</code>"); return
+    if len(p) < 3: await m.answer("Usage: /coupon NEW10 100 [max]"); return
     code = p[1].upper()
     try:
         pts = int(p[2]); max_u = int(p[3]) if len(p) > 3 else 1
     except ValueError: await m.answer("Numbers only"); return
     conn.execute("INSERT OR REPLACE INTO coupons(code,points,max_uses,uses,created_at) "
                  "VALUES(?,?,?,0,?)", (code, pts, max_u, now_str())); conn.commit()
-    await m.answer(f"🎟 Coupon: <code>{code}</code>\n💰 {pts}\n👥 {max_u}")
+    await m.answer(f"🎟 Coupon: {code}\n💰 {pts}\n👥 {max_u}")
 
 async def send_backup(target):
     if not target: return
@@ -1909,7 +1899,7 @@ async def send_backup(target):
         with open("data.db","rb") as f: db_bytes = f.read()
         await bot.send_document(target,
             BufferedInputFile(db_bytes, filename=f"backup_{datetime.date.today()}.db"),
-            caption=f"💾 <b>Backup</b>\n🕒 {now_str()}")
+            caption=f"💾 Backup\n🕒 {now_str()}")
     except Exception as e: logging.warning(f"backup: {e}")
 
 @dp.callback_query(F.data == "o_backup")
@@ -1944,17 +1934,17 @@ async def o_settings(c: types.CallbackQuery):
     if not is_owner(c.from_user.id): return
     d = get_setting("delivery_time", DEFAULT_DELIVERY); r = members_per_account()
     await c.message.edit_text(
-        f"⚙️ <b>Settings</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"⏱ Delivery: <b>{d}</b>\n👥 Rate: <b>{r}</b>/account\n"
+        f"⚙️ Settings\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"⏱ Delivery: {d}\n👥 Rate: {r}/account\n"
         f"💎 {POINTS_PER_MEMBER}pts = 1 member\n🎁 Referral: +{REFERRAL_POINTS}\n\n"
-        f"<code>/setdelivery 24 to 48 hours</code>\n"
-        f"<code>/setrate 5</code>\n"
-        f"<code>/addpoints UID AMT</code>\n"
-        f"<code>/coupon CODE PTS [MAX]</code>\n"
-        f"<code>/addowner UID</code>\n"
-        f"<code>/addhelper UID</code>\n"
-        f"<code>/setvip UID DAYS</code>\n"
-        f"<code>/ban UID</code>  /unban UID",
+        f"/setdelivery 24 to 48 hours\n"
+        f"/setrate 5\n"
+        f"/addpoints UID AMT\n"
+        f"/coupon CODE PTS [MAX]\n"
+        f"/addowner UID\n"
+        f"/addhelper UID\n"
+        f"/setvip UID DAYS\n"
+        f"/ban UID  /unban UID",
         reply_markup=owner_menu())
     await c.answer()
 
@@ -1981,10 +1971,10 @@ async def cmd_addpoints(m: types.Message):
     try: uid, amt = int(p[1]), int(p[2])
     except ValueError: await m.answer("Numbers."); return
     add_points(uid, amt)
-    await m.answer(f"✅ +{amt} to <code>{uid}</code>\nTotal: {get_points(uid)}")
+    await m.answer(f"✅ +{amt} to {uid}\nTotal: {get_points(uid)}")
     try:
         await bot.send_message(uid,
-            f"💰 <b>+{amt} Points Added!</b>\n\nTotal: <b>{get_points(uid)}</b>\n\n"
+            f"💰 +{amt} Points Added!\n\nTotal: {get_points(uid)}\n\n"
             f"🛎 @{CUSTOMER_SERVICE}")
     except Exception: pass
 
@@ -2008,7 +1998,7 @@ async def cmd_addowner(m: types.Message):
                  "VALUES(?,?,?,?)", (uid, "owner", now_str(), m.from_user.id))
     conn.commit()
     if uid not in OWNER_IDS: OWNER_IDS.append(uid)
-    await m.answer(f"👑 Owner: <code>{uid}</code>")
+    await m.answer(f"👑 Owner: {uid}")
 
 @dp.message(Command("addhelper"))
 async def cmd_addhelper(m: types.Message):
@@ -2019,7 +2009,7 @@ async def cmd_addhelper(m: types.Message):
                  "VALUES(?,?,?,?)", (uid, "helper", now_str(), m.from_user.id))
     conn.commit()
     if uid not in HELPERS: HELPERS.append(uid)
-    await m.answer(f"🛡 Helper: <code>{uid}</code>")
+    await m.answer(f"🛡 Helper: {uid}")
 
 @dp.message(Command("ban"))
 async def cmd_ban(m: types.Message):
@@ -2027,7 +2017,7 @@ async def cmd_ban(m: types.Message):
     try: uid = int(m.text.split()[1])
     except Exception: await m.answer("Usage: /ban UID"); return
     conn.execute("UPDATE users SET banned=1 WHERE user_id=?",(uid,)); conn.commit()
-    await m.answer(f"🚫 Banned <code>{uid}</code>")
+    await m.answer(f"🚫 Banned {uid}")
 
 @dp.message(Command("unban"))
 async def cmd_unban(m: types.Message):
@@ -2035,7 +2025,7 @@ async def cmd_unban(m: types.Message):
     try: uid = int(m.text.split()[1])
     except Exception: await m.answer("Usage: /unban UID"); return
     conn.execute("UPDATE users SET banned=0 WHERE user_id=?",(uid,)); conn.commit()
-    await m.answer(f"✅ Unbanned <code>{uid}</code>")
+    await m.answer(f"✅ Unbanned {uid}")
 
 @dp.callback_query(F.data == "o_tickets")
 async def o_tickets(c: types.CallbackQuery):
@@ -2045,11 +2035,11 @@ async def o_tickets(c: types.CallbackQuery):
     if not rows:
         await c.message.edit_text("🎫 No tickets.", reply_markup=owner_menu())
         await c.answer(); return
-    text = "🎫 <b>Tickets</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    text = "🎫 Tickets\n━━━━━━━━━━━━━━━━━━━━\n\n"
     kb = []
     for tid,uid,msg,st,tm in rows:
         em = "🔵" if st=="open" else "✅"
-        text += f"{em} #{tid} 👤<code>{uid}</code>\n💬 {msg[:70]}\n🕒 {tm}\n\n"
+        text += f"{em} #{tid} 👤{uid}\n💬 {msg[:70]}\n🕒 {tm}\n\n"
         kb.append([IKB(text=f"{em} Ticket #{tid}",
                        callback_data=f"treply:{tid}" if st=="open" else f"tv:{tid}")])
     kb.append([IKB(text="🔙 Admin", callback_data="admin_home")])
@@ -2063,8 +2053,8 @@ async def ticket_view(c: types.CallbackQuery):
     r = conn.execute("SELECT user_id,message,reply,status,created_at,replied_at "
                      "FROM tickets WHERE id=?",(tid,)).fetchone()
     if not r: await c.answer("N/A", show_alert=True); return
-    text = (f"🎫 <b>Ticket #{tid}</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"👤 <code>{r[0]}</code>\nStatus: <b>{r[3]}</b>\n🕒 {r[4]}\n\n💬 {r[1]}\n")
+    text = (f"🎫 Ticket #{tid}\n━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👤 {r[0]}\nStatus: {r[3]}\n🕒 {r[4]}\n\n💬 {r[1]}\n")
     if r[2]: text += f"\n↩️ Reply:\n{r[2]}\n🕒 {r[5]}"
     await c.message.edit_text(text, reply_markup=IKM(inline_keyboard=[
         [IKB(text="✉️ Reply", callback_data=f"treply:{tid}")],
@@ -2093,29 +2083,20 @@ async def backup_loop():
 # ==========================================================
 async def main():
     global OWNER_GROUP_ID
-
-    # 🔒 First, acquire single instance lock
     acquire_single_instance_lock()
-
     stored = get_setting("owner_group_id")
     if stored:
         try: OWNER_GROUP_ID = int(stored)
         except Exception: pass
-
     logging.info("🤖 Professional Bot started.")
     logging.info(f"👑 Owner: {OWNER_ID}")
     logging.info(f"📢 Channel: {CHANNEL_LINK}")
     logging.info(f"🛎 Support: @{CUSTOMER_SERVICE}")
-
-    # ✅ Drop any pending updates to avoid conflicts
     try:
         await bot.delete_webhook(drop_pending_updates=True)
     except Exception as e:
         logging.warning(f"delete_webhook: {e}")
-
     asyncio.create_task(backup_loop())
-
-    # ✅ Skip old updates to avoid duplicate processing
     await dp.start_polling(bot,
         skip_updates=True,
         allowed_updates=dp.resolve_used_update_types())
