@@ -43,8 +43,8 @@ API_HASH         = os.getenv("API_HASH", "d21066a90786cf2dd348b907ece69d24")
 OWNER_ID         = int(os.getenv("OWNER_ID", "8762845215"))
 OWNER_GROUP_ID   = int(os.getenv("OWNER_GROUP_ID", "-1003975078444"))
 CUSTOMER_SERVICE = "Ghost_Code_404"
-CHANNEL_LINK     = "https://t.me/ToolsByRehan"
-CHANNEL_USERNAME = "@ToolsByRehan"
+CHANNEL_LINK     = "https://t.me/MR_GHOST_OFFICIAL"
+CHANNEL_USERNAME = "@MR_GHOST_OFFICIAL"
 FORCE_CHANNELS   = [CHANNEL_USERNAME]
 
 DEFAULT_DELIVERY        = "24 to 48 hours"
